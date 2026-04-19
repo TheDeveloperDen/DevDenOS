@@ -4,6 +4,37 @@ mov ah, 0x0e
 mov al, 'Y'
 int 0x10
 
+xor ax, ax
+mov es, ax
+mov di, 0x7000
+xor ebx, ebx
+xor bp, bp
+
+.e820:
+mov eax, 0xe820
+mov ecx, 24
+mov edx, 0x534D4150
+int 0x15
+
+jc .e820done
+cmp eax, 0x534D4150
+jne .e820done
+
+test ecx, ecx
+jz .e820next
+cmp ecx, 20
+jl .e820next
+
+inc bp
+add di, 24
+.e820next:
+test ebx, ebx
+jz .e820done
+jmp .e820
+
+.e820done:
+mov [0x6FF8], bp
+
 cli
 
 in al, 0x92
@@ -30,13 +61,32 @@ mov gs, ax
 mov ss, ax
 mov esp, 0x90000
 
-mov ax, 0x0248
+cld
+
+mov eax, 0 
+mov ecx, 1 
+mov edi, 0x100000
+call ata_read
+
+mov ax, [0x1001FE]
+cmp ax, 0xAA55
+jne .fail
+
+mov ax, 0x024F
 mov [0xb8000], ax
-xor eax, eax
-movzx eax, word [0x7c0b]
+
+mov ax, 0x024B
+mov [0xb8002], ax
 
 jmp $
 
+
+.fail:
+mov ax, 0x0446
+mov [0xb8000], ax
+jmp $
+
+%include "drivers/ata/ata.asm"
 
 gdt_start:
 gdt_null: dq 0 ; required
