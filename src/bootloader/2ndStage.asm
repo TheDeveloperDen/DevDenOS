@@ -63,28 +63,135 @@ mov esp, 0x90000
 
 cld
 
-mov eax, 0 
-mov ecx, 1 
+movzx eax, word [0x7c0e]
+mov dword [fat_lba], eax
+
+movzx ebx, byte [0x7c10]
+mov ecx, dword [0x7c24]
+imul ebx, ecx
+add eax, ebx
+mov dword [data_lba], eax
+
+movzx eax, byte [0x7c0d]
+mov dword [spc], eax
+
+mov eax, dword[0x7c2c]
+
+.dir_search:
+mov edi, 0x80000
+call read_cluster
+
+mov esi, 0x80000
+mov ecx, dword [spc]
+shl ecx, 9
+add ecx, esi
+
+.chk_entry:
+cmp byte [esi], 0
+je .fail
+cmp byte [esi], 0xE5
+je .next
+cmp byte [esi+11], 0x0F
+je .next
+
+push esi
+mov edi, kernel_name
+push ecx
+mov ecx, 11
+repe cmpsb
+pop ecx
+pop esi
+je .found
+
+.next:
+add esi, 32
+cmp esi, ecx
+jl .chk_entry
+call next_cluster
+
+cmp eax, 0x0FFFFFF8
+jae .fail
+jmp .dir_search
+
+.found:
+movzx eax, word [esi+0x14]
+shl eax, 16
+mov ax, word [esi+0x1A]
+
 mov edi, 0x100000
-call ata_read
 
-mov ax, [0x1001FE]
-cmp ax, 0xAA55
-jne .fail
+.load:
+push eax
+call read_cluster
 
-mov ax, 0x024F
-mov [0xb8000], ax
+mov ebx, dword [spc]
+shl ebx, 9
+add edi, ebx
 
-mov ax, 0x024B
-mov [0xb8002], ax
-
-jmp $
-
+pop eax
+call next_cluster
+cmp eax, 0x0FFFFFF8
+jae 0x100000
+jmp .load
 
 .fail:
 mov ax, 0x0446
 mov [0xb8000], ax
 jmp $
+
+read_cluster:
+push eax
+push ecx
+sub eax, 2
+imul eax, dword [spc]
+add eax, dword [data_lba]
+mov ecx, dword [spc]
+call ata_read
+pop ecx
+pop eax
+ret
+
+next_cluster:
+push ebx
+push edx
+
+mov ebx, eax
+shl eax, 2
+mov edx, eax
+shr edx, 9
+add edx, dword [fat_lba]
+and eax, 511
+
+cmp edx, dword [fat_sector]
+je .cache
+mov dword [fat_sector], edx
+
+push eax
+push ecx
+mov eax, edx
+mov ecx, 1
+push edi
+mov edi, 0x70000
+call ata_read
+pop edi
+pop ecx
+pop eax
+
+.cache:
+mov eax, dword [0x70000 + eax]
+and eax, 0x0FFFFFFF
+pop edx
+pop ebx
+ret
+
+jmp $
+
+
+fat_lba dd 0
+data_lba dd 0
+spc dd 0
+fat_sector dd 0xFFFFFFFF
+kernel_name db "KERNEL  BIN" 
 
 %include "drivers/ata/ata.asm"
 
