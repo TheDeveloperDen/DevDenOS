@@ -42,7 +42,7 @@ or eax, 1 <<8
 wrmsr
 
 mov eax, cr0
-or eax, 1 << 31
+or eax, (1 << 31) | (1 << 16)
 mov cr0, eax
 
 lgdt [gdt64_desc]
@@ -50,6 +50,18 @@ jmp code64_segment:long_mode
 jmp $
 
 [bits 64]
+%macro map_page 3
+mov rdi, %1
+mov rsi, %2
+mov rdx, %3
+call mapPage
+%endmacro
+
+%macro unmap_page 1
+mov rdi, %1
+call unmapPage
+%endmacro
+
 long_mode:
 mov ax, data64_segment
 mov ds, ax
@@ -65,13 +77,23 @@ mov rbx, 0
 cmp rbx, 80*25
 je .exit
 inc rbx
-mov [rax], 0x0720
+mov word [rax], 0x0720
 add rax, 2
 jmp .loop
 
 .exit:
+
+map_page 0x4000000, 0xb8000, 3
+
+mov rax, 0x4000000
+mov [rax], word (0x0f << 8) | 'A'
+
+unmap_page 0x4000000
+
 jmp $
 
+
+%include "kernel/paging.asm"
 
 align 8
 gdt64_start:
