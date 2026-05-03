@@ -15,6 +15,10 @@ mov eax, pd_table
 or eax, 3
 mov [pdpt_table], eax
 
+mov eax, pml4_table
+or eax, 3
+mov[pml4_table + 511 * 8], eax
+
 mov edi, pd_table
 mov eax, 0x83
 
@@ -50,6 +54,7 @@ jmp code64_segment:long_mode
 jmp $
 
 [bits 64]
+
 %macro map_page 3
 mov rdi, %1
 mov rsi, %2
@@ -60,6 +65,28 @@ call mapPage
 %macro unmap_page 1
 mov rdi, %1
 call unmapPage
+%endmacro
+
+%macro bios_interrupt 1-7 0, 0, 0, 0, 0, 0
+
+push %7
+push %6
+push %5
+push %4
+push %3
+push %2
+push %1
+
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop r8
+pop r9
+
+call biosinterrupt
+add rsp, 8
+
 %endmacro
 
 long_mode:
@@ -83,12 +110,15 @@ jmp .loop
 
 .exit:
 
-map_page 0x4000000, 0xb8000, 3
+map_page 0x8000000, 0xb8000, 3
 
-mov rax, 0x4000000
-mov [rax], word (0x0f << 8) | 'A'
+call alloc_page
+map_page 0x7000000, rax, 3
 
-unmap_page 0x4000000
+mov word [abs 0x7000000], 0x0742
+
+mov ax, [abs 0x7000000]
+mov [abs 0x8000000], ax
 
 jmp $
 
@@ -114,6 +144,31 @@ db 0x00   ; base mid
 db 10010010b ; access byte
 db 11001111b ; flags
 db 0x00 ; base high
+
+gdt32_code: ; 0x18
+dw 0xFFFF
+dw 0x0000
+db 0x00
+db 10011010b
+db 11001111b
+db 0x00
+
+gdt16_code: ; 0x20
+dw 0xFFFF
+dw 0x0000
+db 0x00
+db 10011010b
+db 00001111b
+db 0x00
+
+gdt16_data: ; 0x28
+dw 0xFFFF
+dw 0x0000
+db 0x00
+db 10010010b
+db 00001111b
+db 0x00
+
 gdt64_end:
 
 gdt64_desc:
@@ -122,6 +177,8 @@ dd gdt64_start
 
 code64_segment equ gdt64_code - gdt64_start
 data64_segment equ gdt64_data - gdt64_start
+
+
 
 
 section .bss
