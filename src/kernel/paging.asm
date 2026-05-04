@@ -47,6 +47,7 @@ shl rax, 12
 mov rbx, 0xFFFFFFFFFFE00000 ; PDPT
 mov rdi, rbx
 add rdi, rax
+invlpg [rdi]
 mov rcx, 512
 xor eax, eax
 rep stosq
@@ -72,6 +73,7 @@ mov rax, r15
 shl rax, 12
 mov rdi, 0xFFFFFFFFC0000000 ; PD
 add rdi, rax
+invlpg [rdi]
 mov rcx, 512
 xor eax, eax
 rep stosq
@@ -97,6 +99,7 @@ mov rax, r15
 shl rax, 12
 mov rdi, 0xFFFFFF8000000000 ; PT
 add rdi, rax
+invlpg [rdi]
 mov rcx, 512
 xor eax, eax
 rep stosq
@@ -195,6 +198,9 @@ mov rdi, rax
 call free_page
 
 mov qword [r8], 0
+
+mov rax, cr3
+mov cr3, rax
 
 .done:
 pop rdi

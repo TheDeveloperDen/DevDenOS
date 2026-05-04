@@ -1,7 +1,9 @@
 org 0x100000
 [bits 32]
 
+
 entry:
+
 mov edi, pml4_table
 mov ecx, 3072
 xor eax, eax
@@ -110,20 +112,24 @@ jmp .loop
 
 .exit:
 
-map_page 0x8000000, 0xb8000, 3
+mov rdi, 4*1024*1024
+call kmalloc
+push rax
 
-call alloc_page
-map_page 0x7000000, rax, 3
+mov [rax], word 0x0241
+mov ax, [rax]
 
-mov word [abs 0x7000000], 0x0742
+mov [abs 0xb8000], ax
 
-mov ax, [abs 0x7000000]
-mov [abs 0x8000000], ax
+pop rdi
+call kfree
+
 
 jmp $
 
 
 %include "kernel/paging.asm"
+%include "kernel/heap.asm"
 
 align 8
 gdt64_start:
