@@ -112,6 +112,11 @@ jmp .loop
 
 .exit:
 
+call idt_init
+call remap_pic
+call pit_init
+sti
+
 mov rdi, 4*1024*1024
 call kmalloc
 push rax
@@ -125,11 +130,14 @@ pop rdi
 call kfree
 
 
-jmp $
+.hang:
+hlt
+jmp .hang
 
 
 %include "kernel/paging.asm"
 %include "kernel/heap.asm"
+%include "kernel/interrupts.asm"
 
 align 8
 gdt64_start:
