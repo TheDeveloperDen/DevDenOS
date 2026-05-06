@@ -62,6 +62,10 @@ lea rax, [irq_PIT]
 mov rdi, 32
 call idt_set_entry
 
+lea rax, [isr_YIELD]
+mov rdi, 0x80
+call idt_set_entry
+
 lidt [idtr]
 
 pop rdi
@@ -161,25 +165,83 @@ ISR_ERR DF, 0x4f46
 ISR_ERR UD, 0x4f55
 
 irq_PIT:
+push r15
+push r14
+push r13
+push r12
+push r11
+push r10
+push r9
+push r8
 push rdi
+push rsi
+push rbp
+push rbx
+push rdx
+push rcx
+push rax
 
 inc qword [pit_tick]
 
 mov rdi, 0
 call pic_eoi
 
+mov rdi, rsp
+call schedule
+mov rsp, rax
+
+pop rax
+pop rcx
+pop rdx
+pop rbx
+pop rbp
+pop rsi
 pop rdi
+pop r8
+pop r9
+pop r10
+pop r11
+pop r12
+pop r13
+pop r14
+pop r15
 iretq
 
+isr_YIELD:
+push r15
+push r14
+push r13
+push r12
+push r11
+push r10
+push r9
+push r8
+push rdi
+push rsi
+push rbp
+push rbx
+push rdx
+push rcx
+push rax
 
+mov rdi, rsp
+call yield_sch
+mov rsp, rax
 
-
-
-
-
-
-
-
-
-
+pop rax
+pop rcx
+pop rdx
+pop rbx
+pop rbp
+pop rsi
+pop rdi
+pop r8
+pop r9
+pop r10
+pop r11
+pop r12
+pop r13
+pop r14
+pop r15
+iretq
 

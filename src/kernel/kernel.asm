@@ -115,29 +115,41 @@ jmp .loop
 call idt_init
 call remap_pic
 call pit_init
+
+call scheduler_init
+
+mov rdi, task_a
+mov rsi, 1
+call create_thread
+
+mov rdi, task_b
+mov rsi, 1
+call create_thread
 sti
 
-mov rdi, 4*1024*1024
-call kmalloc
-push rax
-
-mov [rax], word 0x0241
-mov ax, [rax]
-
-mov [abs 0xb8000], ax
-
-pop rdi
-call kfree
-
-
-.hang:
+.idle:
 hlt
-jmp .hang
+jmp .idle
+
+task_a:
+mov rdi, 0xb8000
+.loop_a:
+mov word [rdi], 0x0c41
+call yield_cpu
+jmp .loop_a
+
+task_b:
+mov rdi, 0xb8000
+.loop_b:
+mov word[rdi], 0x0942
+call yield_cpu
+jmp .loop_b
 
 
 %include "kernel/paging.asm"
 %include "kernel/heap.asm"
 %include "kernel/interrupts.asm"
+%include "kernel/processes.asm"
 
 align 8
 gdt64_start:
