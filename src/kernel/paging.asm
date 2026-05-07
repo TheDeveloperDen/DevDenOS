@@ -175,6 +175,12 @@ mov rax, [r8]
 test rax, 1
 jz .done
 
+push rdi
+mov rdi, rax
+and rdi, ~0xFFF
+call free_page
+pop rdi
+
 
 mov qword [r8], 0
 invlpg [rdi]
@@ -211,6 +217,66 @@ ret
 mov qword [r8], 0
 invlpg [rdi]
 pop rdi
+pop rbx
+ret
+
+;; rdi = virtual addr
+;; rax = mapped?
+is_page_mapped:
+push rbx
+push rcx
+push r8
+push rdi
+
+mov rbx, 0xFFFFFFFFFFFFF000 ; PML4
+mov rax, rdi
+shr rax, 39
+and eax, 0x1FF
+lea r8, [rbx + rax * 8]
+mov rax, [r8]
+test rax, 1
+jz .done_false
+
+mov rbx, 0xFFFFFFFFFFE00000 ; PDPT
+mov rax, rdi
+shr rax, 30
+and eax, 0x3FFFF
+lea r8, [rbx + rax * 8]
+mov rax, [r8]
+test rax, 1
+jz .done_false
+
+mov rbx, 0xFFFFFFFFC0000000 ; PD
+mov rax, rdi
+shr rax, 21
+and eax, 0x7FFFFFF
+lea r8, [rbx + rax * 8]
+mov rax, [r8]
+test rax, 1
+jz .done_false
+
+test rax, 0x80
+jnz .done_true
+
+mov rbx, 0xFFFFFF8000000000 ; PT
+mov rax, rdi
+shr rax, 12
+mov rcx, 0xFFFFFFFFF
+and rax, rcx
+lea r8, [rbx + rax * 8]
+mov rax,[r8]
+test rax, 1
+jz .done_false
+
+.done_true:
+mov rax, 1
+jmp .done
+.done_false:
+xor rax, rax
+.done:
+pop rdi
+pop r8
+pop rcx
 pop rbx
 ret
 
@@ -326,8 +392,16 @@ mov qword [nextPage], 0
 jmp .find_page
 
 .oom:
-cli
-hlt
+xor rax, rax
+pop r9
+pop r8
+pop rdi
+pop rdx
+pop rcx
+pop rsi
+pop rbx
+popfq
+ret
 jmp $
 
 ;; rdi = physical addr of the page to free

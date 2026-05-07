@@ -13,20 +13,24 @@ mov eax, pdpt_table
 or eax, 3
 mov [pml4_table], eax
 
+mov edi, pdpt_table
 mov eax, pd_table
 or eax, 3
-mov [pdpt_table], eax
+mov ecx, 8
+.map_pdpt:
+mov [edi], eax
+add eax, 4096
+add edi, 8
+dec ecx
+jnz .map_pdpt
 
 mov eax, pml4_table
 or eax, 3
-mov[pml4_table + 511 * 8], eax
+mov [pml4_table + 511 * 8], eax
 
 mov edi, pd_table
 mov eax, 0x83
-
-mov ebx, kernel_end
-add ebx, 0x1FFFFF
-shr ebx, 21
+mov ebx, 4096
 
 .map:
 mov [edi], eax
@@ -112,6 +116,18 @@ jmp .loop
 
 .exit:
 
+mov rax, tss
+mov word [abs gdt_tss + 2], ax
+shr rax, 16
+mov byte [abs gdt_tss + 4], al
+shr rax, 8
+mov byte [abs gdt_tss + 7], al
+shr rax, 8
+mov dword [abs gdt_tss + 8], eax
+
+mov ax, 0x40
+ltr ax
+
 call idt_init
 call remap_pic
 call pit_init
@@ -125,7 +141,14 @@ call create_thread
 mov rdi, task_b
 mov rsi, 1
 call create_thread
+
+mov rdi, user_program
+mov rsi, user_end - user_program
+call load_userspace_process
+
 sti
+
+
 
 .idle:
 hlt
@@ -139,17 +162,35 @@ call yield_cpu
 jmp .loop_a
 
 task_b:
-mov rdi, 0xb8000
+mov rdi, 0xb8002
 .loop_b:
 mov word[rdi], 0x0942
 call yield_cpu
 jmp .loop_b
+
+user_program:
+mov rax, 2
+mov rdi, 1
+lea rsi, [rel crow]
+mov rdx, crow_len
+int 0x81
+
+mov rax, 1
+int 0x81
+
+crow: db "Chirp, Chirp!"
+crow_len equ $ - crow
+
+user_end:
+
+
 
 
 %include "kernel/paging.asm"
 %include "kernel/heap.asm"
 %include "kernel/interrupts.asm"
 %include "kernel/processes.asm"
+%include "kernel/userspace.asm"
 
 align 8
 gdt64_start:
@@ -195,6 +236,31 @@ db 10010010b
 db 00001111b
 db 0x00
 
+gdt64_user_data: ; 0x30
+dw 0xFFFF
+dw 0x0000
+db 0x00
+db 11110010b
+db 11001111b
+db 0x00
+
+gdt64_user_code: ; 0x38
+dw 0xFFFF
+dw 0x0000
+db 0x00
+db 11111010b
+db 10101111b
+db 0x00
+
+gdt_tss: ; 0x40
+dw 103
+dw 0
+db 0
+db 10001001b
+db 0
+db 0
+dq 0
+
 gdt64_end:
 
 gdt64_desc:
@@ -211,5 +277,9 @@ section .bss
 alignb 4096
 pml4_table: resb 4096
 pdpt_table: resb 4096
-pd_table:   resb 4096
+pd_table:   resb 32768
+
+align 16
+tss: resb 104
+
 kernel_end:

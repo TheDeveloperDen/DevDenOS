@@ -8,6 +8,8 @@ idtr:
 dw 256 * 16 - 1
 dq idt_table
 
+vga_offset dq 160
+
 pit_tick dq 0
 
 section .bss
@@ -40,30 +42,42 @@ rep stosq
 
 lea rax, [isr_DIV]
 mov rdi, 0
+mov rsi, 0x8E
 call idt_set_entry
 
 lea rax, [isr_UD]
 mov rdi, 6
+mov rsi, 0x8E
 call idt_set_entry
 
 lea rax, [isr_DF]
 mov rdi, 8
+mov rsi, 0x8E
 call idt_set_entry
 
 lea rax, [isr_GPF]
 mov rdi, 13
+mov rsi, 0x8E
 call idt_set_entry
 
 lea rax, [isr_PF]
 mov rdi, 14
+mov rsi, 0x8E
 call idt_set_entry
 
 lea rax, [irq_PIT]
 mov rdi, 32
+mov rsi, 0x8E
 call idt_set_entry
 
 lea rax, [isr_YIELD]
 mov rdi, 0x80
+mov rsi, 0xEE
+call idt_set_entry
+
+lea rax, [isr_SYSCALL]
+mov rdi, 0x81
+mov rsi, 0xEE
 call idt_set_entry
 
 lidt [idtr]
@@ -75,6 +89,7 @@ ret
 
 ;; rdi = vector num
 ;; rax = handle addr
+;; rsi = attr
 idt_set_entry:
 push rbx
 lea rbx, [idt_table]
@@ -84,7 +99,7 @@ add rbx, rdi
 mov [rbx], ax
 mov word [rbx + 2], 0x08
 mov byte [rbx + 4], 0
-mov byte [rbx + 5], 0x8E
+mov byte [rbx + 5], sil
 shr rax, 16
 mov [rbx + 6], ax
 shr rax, 16
@@ -163,6 +178,407 @@ ISR_ERR GPF, 0x4f47
 ISR_ERR PF, 0x4f50
 ISR_ERR DF, 0x4f46
 ISR_ERR UD, 0x4f55
+
+isr_SYSCALL:
+cmp rax, 1
+je exit_thread
+cmp rax, 2
+je .sys_write
+cmp rax, 3
+je .sys_mmap
+cmp rax, 4
+je .sys_unmap
+iretq
+
+;; rax = 2
+;; rdi = fd
+;; rsi = buffer pointer
+;; rdx = len
+.sys_write:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+
+mov rcx, rdx
+mov rbx, rsi
+mov rax, 0xb8000
+mov r8, [vga_offset]
+add rax, r8
+
+.write_loop:
+test rcx, rcx
+jz .write_done
+mov dl, [rbx]
+mov byte [rax], dl
+mov byte [rax + 1], 0x0F
+add rax, 2
+inc rbx
+dec rcx
+jmp .write_loop
+
+.write_done:
+sub rax, 0xb8000
+mov [vga_offset], rax
+
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 3
+;; rdi = virtual addr
+;; rsi = no of pages
+;; rdx = prot
+;; r10 = flags
+.sys_mmap:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+push r14
+push r15
+
+mov r12, rdi
+mov r13, rsi
+
+test r13, r13
+jz .mmap_err
+
+cmp r13, 0x7FFFFFFF
+ja .mmap_err
+
+test r10, 0x20
+jz .mmap_err
+
+mov r14, 5
+test rdx, 2
+jz .prot_parsed
+or r14, 2
+.prot_parsed:
+
+test r12, 0xFFF
+jnz .mmap_err
+
+test r10, 0x10
+jnz .check_bounds
+
+test r12, r12
+jz .search_vma2
+
+mov rbx, r12
+mov r15, r13
+.check_hint:
+mov rdi, rbx
+call is_page_mapped
+jnz .search_vma2
+add rbx, 4096
+dec r15
+jnz .check_hint
+jmp .check_bounds
+
+
+.search_vma2:
+mov r12, 0x700000000000
+.search_vma:
+mov rbx, r12
+mov r15, r13
+
+.check_vma_page:
+mov rdi, rbx
+call is_page_mapped
+test rax, rax
+jnz .vma_occupied
+add rbx, 4096
+dec r15
+jnz .check_vma_page
+jmp .check_bounds
+
+.vma_occupied:
+lea r12, [rbx + 4096]
+mov rax, 0x00007FFFF0000000
+cmp r12, rax
+jae .mmap_err
+jmp .search_vma
+
+.check_bounds:
+mov rax, r13
+shl rax, 12
+add rax, r12
+jc .mmap_err
+mov rbx, 0x00007FFFFFFFFFFF
+cmp rax, rbx
+ja .mmap_err
+
+mov rbx, r12
+mov r15, r13
+.unmap_existing:
+mov rdi, rbx
+call is_page_mapped
+test rax, rax
+jz .skip_unmap
+mov rdi, rbx
+call unmapPage
+
+.skip_unmap:
+add rbx, 4096
+dec r15
+jnz .unmap_existing
+
+mov rbx, r12
+mov r15, r13
+
+mov r8, [curr_thread]
+lea r9, [r8 + 64]
+
+.clean_vmas:
+mov r10, [r9]
+test r10, r10
+jz .clean_vmasok
+
+mov rcx, [r10]
+cmp rcx, r12
+jb .keep_vma
+
+mov rax, [r10 + 8]
+shl rax, 12
+add rax, rcx
+
+mov rdi, r13
+shl rdi, 12
+add rdi, r12
+
+cmp rax, rdi
+ja .keep_vma
+
+mov rcx, [r10 + 16]
+mov [r9], rcx
+
+push r9
+mov rdi, r10
+call kfree
+pop r9
+jmp .clean_vmas
+
+.keep_vma:
+lea r9, [r10 + 16]
+jmp .clean_vmas
+
+.clean_vmasok:
+mov rbx, r12
+mov r15, r13
+
+.mmap_loop:
+test r15, r15
+jz .mmap_done
+
+call alloc_page
+test rax, rax
+jz .mmap_rollback
+
+push rax
+
+mov rdi, rbx
+mov rsi, rax
+mov rdx, r14
+or rdx, 2
+call mapPage
+
+mov rdi, rbx
+mov rcx, 512
+xor eax, eax
+rep stosq
+
+pop rax
+
+test r14, 2
+jnz .next_page
+mov rdi, rbx
+mov rsi, rax
+mov rdx, r14
+call mapPage
+
+.next_page:
+add rbx, 4096
+dec r15
+jmp .mmap_loop
+
+.mmap_rollback:
+mov r15, rbx
+mov rbx, r12
+
+.rollback_loop:
+cmp rbx, r15
+jae .mmap_err
+mov rdi, rbx
+call unmapPage
+add rbx, 4096
+jmp .rollback_loop
+
+.mmap_done:
+mov rax, r12
+
+push rax
+mov rdi, 24
+call kmalloc
+mov rbx, rax
+pop rax
+
+mov [rbx], rax
+mov [rbx + 8], r13
+
+mov r8, [curr_thread]
+mov r9, [r8 + 64]
+mov [rbx + 16], r9
+mov [r8 + 64], rbx
+
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+.mmap_err:
+mov rax, -1
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+	
+	
+;; rax = 4
+;; rdi = virtual addr
+;; rsi = no of pages
+.sys_unmap:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+
+test rdi, 0xFFF
+jnz .unmap_err
+
+cmp rsi, 0x7FFFFFFF
+ja .unmap_err
+
+mov rax, rsi
+shl rax, 12
+add rax, rdi
+jc .unmap_err
+mov rbx, 0x00007FFFFFFFFFFF
+cmp rax, rbx
+ja .unmap_err
+
+mov r12, rdi
+mov r13, rsi
+
+.unmap_loop:
+test r13, r13
+jz .unmap_done
+
+mov rdi, r12
+call unmapPage
+
+add r12, 4096
+dec r13
+jmp .unmap_loop
+
+.unmap_done:
+mov r8, [curr_thread]
+lea r9, [r8 + 64]
+
+mov r10, [rsp + 48]
+mov r11, [rsp + 56]
+
+.find_vma:
+mov rbx, [r9]
+test rbx, rbx
+jz .finish_unmap
+    
+cmp [rbx], r10
+jne .next_vma
+cmp[rbx + 8], r11
+jne .next_vma
+    
+mov rcx, [rbx + 16]
+mov [r9], rcx
+    
+mov rdi, rbx
+call kfree
+jmp .finish_unmap
+
+.next_vma:
+lea r9, [rbx + 16]
+jmp .find_vma
+
+.finish_unmap:
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+mov rax, 0
+iretq
+
+
+.unmap_err:
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+mov rax, -1
+iretq
 
 irq_PIT:
 push r15
