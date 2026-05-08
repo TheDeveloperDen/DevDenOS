@@ -205,6 +205,43 @@ call free_page
 
 mov qword [r8], 0
 
+mov rdi, r8
+and rdi, ~0xFFF
+mov rcx, 512
+xor eax, eax
+rep scasq
+jnz .flush_tlb
+
+mov rax, [rsp]
+shr rax, 30
+and eax, 0x3FFFF
+mov rbx, 0xFFFFFFFFFFE00000 ; PDPT
+lea r8, [rbx + rax * 8]
+mov rax, [r8]
+and rax, ~0xFFF
+mov rdi, rax
+call free_page
+mov qword[r8], 0
+
+mov rdi, r8
+and rdi, ~0xFFF
+mov rcx, 512
+xor eax, eax
+rep scasq
+jnz .flush_tlb
+
+mov rax, [rsp]
+shr rax, 39
+and eax, 0x1FF
+mov rbx, 0xFFFFFFFFFFFFF000 ; PML4
+lea r8, [rbx + rax * 8]
+mov rax, [r8]
+and rax, ~0xFFF
+mov rdi, rax
+call free_page
+mov qword [r8], 0
+
+.flush_tlb:
 mov rax, cr3
 mov cr3, rax
 

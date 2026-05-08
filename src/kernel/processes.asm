@@ -108,7 +108,7 @@ jz .skip_unmap
 
 add rbx, 4095
 shr rbx, 12
-mov r12, 0x4000000
+mov r12, [rax + 72]
 .unmap:
 test rbx, rbx
 jz .unmap_done
@@ -351,6 +351,7 @@ mov r13, rsi
 mov r14, rdx
 mov r15, rcx
 push r8
+push r9
 
 mov rdi, 8192
 call kmalloc
@@ -377,7 +378,7 @@ xor eax, eax
 rep stosq
 mov rax, r8
 
-mov rdi, 80
+mov rdi, 88
 push rax
 call kmalloc
 pop rdx
@@ -388,9 +389,11 @@ mov[rax + 24], r14
 mov [rax + 32], rbx
 mov qword [rax + 40], 1
 mov [rax + 48], r15
+pop r9
 pop r8
 mov [rax + 56], r8
 mov qword [rax + 64], 0
+mov [rax + 72], r9
 
 mov rcx, [curr_thread]
 

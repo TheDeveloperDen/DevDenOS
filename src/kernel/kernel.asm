@@ -132,6 +132,9 @@ call idt_init
 call remap_pic
 call pit_init
 
+call fat32_init
+
+
 call scheduler_init
 
 mov rdi, task_a
@@ -143,9 +146,16 @@ mov rsi, 1
 call create_thread
 
 mov rdi, user_program
-mov rsi, user_end - user_program
+call fat32_load_file
+
+test rax, rax
+jz .fail
+
+mov rdi, rax
+mov rsi, rdx
 call load_userspace_process
 
+.fail:
 sti
 
 
@@ -168,21 +178,7 @@ mov word[rdi], 0x0942
 call yield_cpu
 jmp .loop_b
 
-user_program:
-mov rax, 2
-mov rdi, 1
-lea rsi, [rel crow]
-mov rdx, crow_len
-int 0x81
-
-mov rax, 1
-int 0x81
-
-crow: db "Chirp, Chirp!"
-crow_len equ $ - crow
-
-user_end:
-
+user_program: db "example.dde",0
 
 
 
@@ -191,6 +187,9 @@ user_end:
 %include "kernel/interrupts.asm"
 %include "kernel/processes.asm"
 %include "kernel/userspace.asm"
+%include "kernel/fat32.asm"
+
+%include "drivers/ata/ata64.asm"
 
 align 8
 gdt64_start:
