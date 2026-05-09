@@ -1,3 +1,4 @@
+mkdir out
 nasm -I src/ -fbin src/bootloader/bootloader.asm -o out/bootloader.bin
 nasm -I src/ -fbin src/bootloader/2ndStage.asm -o out/2ndStage.bin
 
