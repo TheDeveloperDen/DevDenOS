@@ -134,16 +134,10 @@ call pit_init
 
 call fat32_init
 
-
+call drivers_init
 call scheduler_init
 
-mov rdi, task_a
-mov rsi, 1
-call create_thread
 
-mov rdi, task_b
-mov rsi, 1
-call create_thread
 
 mov rdi, user_program
 call fat32_load_file
@@ -164,19 +158,6 @@ sti
 hlt
 jmp .idle
 
-task_a:
-mov rdi, 0xb8000
-.loop_a:
-mov word [rdi], 0x0c41
-call yield_cpu
-jmp .loop_a
-
-task_b:
-mov rdi, 0xb8002
-.loop_b:
-mov word[rdi], 0x0942
-call yield_cpu
-jmp .loop_b
 
 user_program: db "example.dde",0
 
@@ -188,6 +169,8 @@ user_program: db "example.dde",0
 %include "kernel/processes.asm"
 %include "kernel/userspace.asm"
 %include "kernel/fat32.asm"
+%include "kernel/drivers.asm"
+%include "kernel/pci.asm"
 
 %include "drivers/ata/ata64.asm"
 

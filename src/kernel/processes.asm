@@ -112,6 +112,7 @@ mov r12, [rax + 72]
 .unmap:
 test rbx, rbx
 jz .unmap_done
+
 mov rdi, r12
 call unmapPage
 add r12, 4096
@@ -119,11 +120,13 @@ dec rbx
 jmp .unmap
 
 .unmap_done:
+; Unmap the stack
 mov rbx, 256
 mov r12, 0x7FFFF0000000
 .unmap_stack:
 mov rdi, r12
 call unmapPage
+
 add r12, 4096
 dec rbx
 jnz .unmap_stack
@@ -151,31 +154,33 @@ jmp .unmap_vma
 .next_vma:
 mov r14, [rbx + 16]
 mov rdi, rbx
+
 call kfree
 mov rbx, r14
 jmp .free_vmas
 
 .vmas_done:
-mov r12, 0                      
+mov r12, 0 ; start pml4 at 0
+
 .clean_pml4:
-cmp r12, 256                    
+cmp r12, 256
 jae .clean_done
 
-mov rbx, 0xFFFFFFFFFFFFF000     
+mov rbx, 0xFFFFFFFFFFFFF000 ; PML4
 mov rax, [rbx + r12 * 8]
 test rax, 1
 jz .next_pml4
 
-mov r13, 0                      
+mov r13, 0 ; start pdpt at 0
 .clean_pdpt:
 cmp r13, 512
 jae .free_pdpt
 
-mov rbx, 0xFFFFFFFFFFE00000     
+mov rbx, 0xFFFFFFFFFFE00000 ; PDPT
 mov r14, r12
-shl r14, 12                     
+shl r14, 12
 add rbx, r14
-    
+
 mov rax, [rbx + r13 * 8]
 test rax, 1
 jz .next_pdpt
@@ -188,16 +193,18 @@ mov r15, 0
 cmp r15, 512
 jae .free_pd
 
-mov rbx, 0xFFFFFFFFC0000000
+mov rbx, 0xFFFFFFFFC0000000 ; PD
 mov r14, r12
-shl r14, 9                      
-add r14, r13                    
-shl r14, 12                     
+shl r14, 9
+
+add r14, r13
+shl r14, 12
 add rbx, r14
 
 mov rax, [rbx + r15 * 8]
 test rax, 1
 jz .next_pd
+
 test rax, 0x80
 jnz .next_pd
 

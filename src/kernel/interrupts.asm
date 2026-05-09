@@ -8,9 +8,12 @@ idtr:
 dw 256 * 16 - 1
 dq idt_table
 
-vga_offset dq 160
+cursor_x dq 0
+cursor_y dq 0
 
 pit_tick dq 0
+
+%include "drivers/bga/vga_font.asm"
 
 section .bss
 align 16
@@ -188,6 +191,105 @@ cmp rax, 3
 je .sys_mmap
 cmp rax, 4
 je .sys_unmap
+cmp rax, 5
+je .sys_get_driver
+cmp rax, 6
+je .sys_driver_invoke
+cmp rax, 7
+je .sys_load_driver
+iretq
+
+;; rax = 5
+;; rdi = driver name
+.sys_get_driver:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call driver_find_by_name
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 6
+;; rdi = handle
+;; rsi = function
+;; rdx = in buffer
+;; r10 = out buffer
+.sys_driver_invoke:
+mov rcx, r10
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call driver_invoke
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 7
+;; rdi = filename
+.sys_load_driver:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call fat32_load_file
+test rax, rax
+jz .load_fail
+
+mov rdi, rax
+mov rsi, rdx
+call load_kernel_driver
+jmp .load_done
+
+.load_fail:
+xor rax, rax
+
+.load_done:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
 iretq
 
 ;; rax = 2
@@ -201,28 +303,64 @@ push rdx
 push rsi
 push rdi
 push r8
+push r9
+push r10
 
-mov rcx, rdx
 mov rbx, rsi
-mov rax, 0xb8000
-mov r8, [vga_offset]
-add rax, r8
+mov rcx, rdx
 
 .write_loop:
 test rcx, rcx
 jz .write_done
-mov dl, [rbx]
-mov byte [rax], dl
-mov byte [rax + 1], 0x0F
-add rax, 2
+
+movzx rax, byte [rbx]
+
+cmp al, 10
+je .newline
+
+call .draw_char
+
+add qword [cursor_x], 8
+cmp qword [cursor_x], 1680
+jb .char_done
+
+.newline:
+mov qword [cursor_x], 0
+add qword[cursor_y], 16
+
+cmp qword [cursor_y], 720
+jb .char_done
+
+push rax
+push rcx
+push rdi
+push rsi
+
+mov rdi, 0xE0000000
+mov rsi, 0xE0000000 + 81920
+mov rcx, 450560
+rep movsq
+
+mov rdi, 0xE0000000 + 3604480
+mov rcx, 10240
+xor rax, rax
+rep stosq
+
+pop rsi
+pop rdi
+pop rcx
+pop rax
+
+mov qword [cursor_y], 704
+
+.char_done:
 inc rbx
 dec rcx
 jmp .write_loop
 
 .write_done:
-sub rax, 0xb8000
-mov [vga_offset], rax
-
+pop r10
+pop r9
 pop r8
 pop rdi
 pop rsi
@@ -230,6 +368,64 @@ pop rdx
 pop rcx
 pop rbx
 iretq
+
+;; rax = character to draw
+.draw_char:
+push rax
+push rbx
+push rcx
+push rdx
+push rdi
+push rsi
+push r8
+push r9
+
+shl rax, 4
+lea rsi, [vga_font + rax]
+
+mov rdi, [cursor_y]
+imul rdi, 1680
+add rdi, [cursor_x]
+shl rdi, 2
+mov r8, 0xE0000000
+add rdi, r8
+
+mov r8, 16
+
+.row_loop:
+mov dl, [rsi]
+mov r9, 8
+mov rcx, rdi
+
+.col_loop:
+shl dl, 1
+jc .draw_fg
+
+mov dword [rcx], 0x00000000
+jmp .next_pixel
+
+.draw_fg:
+mov dword [rcx], 0xFFFFFFFF
+
+.next_pixel:
+add rcx, 4
+dec r9
+jnz .col_loop
+
+inc rsi
+add rdi, 1680 * 4
+dec r8
+jnz .row_loop
+
+pop r9
+pop r8
+pop rsi
+pop rdi
+pop rdx
+pop rcx
+pop rbx
+pop rax
+ret
 
 ;; rax = 3
 ;; rdi = virtual addr
@@ -475,8 +671,7 @@ pop rdx
 pop rcx
 pop rbx
 iretq
-	
-	
+
 ;; rax = 4
 ;; rdi = virtual addr
 ;; rsi = no of pages
@@ -532,15 +727,15 @@ mov r11, [rsp + 56]
 mov rbx, [r9]
 test rbx, rbx
 jz .finish_unmap
-    
+
 cmp [rbx], r10
 jne .next_vma
 cmp[rbx + 8], r11
 jne .next_vma
-    
+
 mov rcx, [rbx + 16]
 mov [r9], rcx
-    
+
 mov rdi, rbx
 call kfree
 jmp .finish_unmap
