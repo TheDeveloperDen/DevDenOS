@@ -233,7 +233,7 @@ mov rbx, 0xFFFFFFFFFFFFF000
 mov rax, [rbx + r12 * 8]
 mov rdi, rax
 and rdi, ~0xFFF
-call free_page                  
+call free_page
 
 .next_pml4:
 inc r12

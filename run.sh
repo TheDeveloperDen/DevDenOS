@@ -5,15 +5,23 @@ nasm -I src/ -fbin src/bootloader/2ndStage.asm -o out/2ndStage.bin
 nasm -I src/ -fbin src/kernel/kernel.asm -o out/KERNEL.BIN
 
 nasm -fbin src/progs/example/example_prog.asm -o out/example.dde
+
+
 nasm -fbin src/drivers/bga/bga.asm -o out/bga.dde
+nasm -fbin src/drivers/ps2/ps2.asm -o out/ps2.dde
 
 dd if=/dev/zero of=out/devdenOS.img bs=1M count=48
 mkfs.fat -F 32 out/devdenOS.img
 
+mmd -i out/devdenOS.img ::/den
+mmd -i out/devdenOS.img ::/den/cursors
+
 mcopy -i out/devdenOS.img out/KERNEL.BIN ::/KERNEL.BIN
-mcopy -i out/devdenOS.img out/example.dde ::/example.dde
+mcopy -i out/devdenOS.img out/example.dde ::/den/example.dde
 
 mcopy -i out/devdenOS.img out/bga.dde ::/bga.dde
+mcopy -i out/devdenOS.img out/ps2.dde ::/ps2.dde
+
 
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 count=3 conv=notrunc
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 skip=93 seek=93 count=417 conv=notrunc

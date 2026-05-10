@@ -318,6 +318,9 @@ movzx rax, byte [rbx]
 cmp al, 10
 je .newline
 
+cmp al, 8
+je .backspace
+
 call .draw_char
 
 add qword [cursor_x], 8
@@ -337,12 +340,12 @@ push rdi
 push rsi
 
 mov rdi, 0xE0000000
-mov rsi, 0xE0000000 + 81920
-mov rcx, 450560
+mov rsi, 0xE0000000 + 107520
+mov rcx, 591360
 rep movsq
 
-mov rdi, 0xE0000000 + 3604480
-mov rcx, 10240
+mov rdi, 0xE0000000 + 4730880
+mov rcx, 13440
 xor rax, rax
 rep stosq
 
@@ -352,6 +355,26 @@ pop rcx
 pop rax
 
 mov qword [cursor_y], 704
+jmp .char_done
+
+.backspace:
+cmp qword [cursor_x], 0
+je .bs_check_y
+sub qword [cursor_x], 8
+jmp .bs_clear
+
+.bs_check_y:
+cmp qword [cursor_y], 0
+je .char_done
+sub qword [cursor_y], 16
+mov qword[cursor_x], 1672
+
+.bs_clear:
+push rax
+mov rax, 32
+call .draw_char
+pop rax
+ 
 
 .char_done:
 inc rbx
@@ -855,4 +878,3 @@ pop r13
 pop r14
 pop r15
 iretq
-

@@ -159,7 +159,7 @@ hlt
 jmp .idle
 
 
-user_program: db "example.dde",0
+user_program: db "den/example.dde",0
 
 
 

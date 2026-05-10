@@ -11,6 +11,7 @@ fat_buf resb 512
 dir_buf resb 32768
 sfn_buf resb 16
 lfn_buf resb 256
+path_token resb 256
 
 section .text
 
@@ -133,6 +134,34 @@ push r15
 mov r12, rdi
 mov r13d, dword [root_cluster]
 
+.next_token:
+cmp byte [r12], '/'
+jne .copy_token
+inc r12
+jmp .next_token
+
+.copy_token:
+cmp byte [r12], 0
+je .not_found
+
+lea rdi, [rel path_token]
+mov rcx, 255
+
+.copy_loop:
+mov al, [r12]
+cmp al, '/'
+je .token_done
+cmp al, 0
+je .token_done
+mov [rdi], al
+inc rdi
+inc r12
+dec rcx
+jnz .copy_loop
+
+.token_done:
+mov byte [rdi], 0
+
 .read_dir:
 mov rdi, r13
 lea rsi, [rel dir_buf]
@@ -152,7 +181,7 @@ je .not_found
 cmp byte [r14], 0xE5
 je .deleted
 
-cmp byte [r14 + 11], 0x0F
+cmp byte[r14 + 11], 0x0F
 je .is_lfn
 
 lea rdi, [rel lfn_buf]
@@ -163,16 +192,16 @@ mov rdi, r14
 lea rsi, [rel sfn_buf]
 call build_sfn
 
-mov rdi, r12
-lea rsi, [rel sfn_buf]
+lea rdi, [rel path_token]
+lea rsi,[rel sfn_buf]
 call stricmp
 test rax, rax
 jnz .found
 jmp .reset_lfn
 
 .check_lfn:
-mov rdi, r12
-lea rsi, [rel lfn_buf]
+lea rdi, [rel path_token]
+lea rsi,[rel lfn_buf]
 call stricmp
 test rax, rax
 jnz .found
@@ -182,7 +211,7 @@ lea r8, [rel lfn_buf]
 mov rcx, 32
 xor rax, rax
 .clear_lfn:
-mov [r8 + rcx*8 - 8], rax
+mov[r8 + rcx*8 - 8], rax
 loop .clear_lfn
 jmp .next_entry
 
@@ -202,7 +231,7 @@ lea r8, [rel lfn_buf]
 mov rcx, 32
 xor rax, rax
 .clear_lfn2:
-mov [r8 + rcx*8 - 8], rax
+mov[r8 + rcx*8 - 8], rax
 loop .clear_lfn2
 
 .next_entry:
@@ -217,16 +246,43 @@ jae .not_found
 mov r13, rax
 jmp .read_dir
 
+.found:
+cmp byte [r12], '/'
+jne .check_end
+inc r12
+jmp .found
+
+.check_end:
+cmp byte [r12], 0
+je .final_file
+
+test byte [r14 + 11], 0x10
+jz .not_found
+
+movzx eax, word [r14 + 20]
+shl eax, 16
+mov ax, word [r14 + 26]
+mov r13d, eax
+
+lea r8, [rel lfn_buf]
+mov rcx, 32
+xor rax, rax
+.clear_lfn3:
+mov [r8 + rcx*8 - 8], rax
+loop .clear_lfn3
+
+jmp .next_token
+
 .not_found:
 xor rax, rax
 xor rdx, rdx
 jmp .exit
 
-.found:
+.final_file:
 movzx eax, word [r14 + 20]
 shl eax, 16
 mov ax, word [r14 + 26]
-mov edx, dword [r14 + 28]
+mov edx, dword[r14 + 28]
 
 .exit:
 pop r15

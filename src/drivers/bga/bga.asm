@@ -50,7 +50,36 @@ mov rbx, rdx
 cmp rdi, 1
 je .do_init
 
+cmp rdi, 2
+je .put_pixel
+
 mov rax, -1
+jmp .done
+
+.put_pixel:
+mov r8, [rsi]
+mov r9, [rsi + 8]
+mov rcx, [rsi + 16]
+
+cmp r8, [vwidth]
+jae .dp_fail
+cmp r9, [vheight]
+jae .dp_fail
+
+mov rax, [vwidth]
+imul rax, r9
+add rax, r8
+shl rax, 2
+
+mov rdi, 0xE0000000
+add rdi, rax
+mov [rdi], ecx
+
+mov rax, 1
+jmp .done
+
+.dp_fail:
+mov rax, 0
 jmp .done
 
 .do_init:
@@ -147,11 +176,11 @@ jmp .map_loop
 .map_done:
 mov rax, 0xE0000000
 mov [rbx], rax
-xor rax, rax
+mov rax, 1
 jmp .done
 
 .fail:
-mov rax, -1
+mov rax, 0
 
 .done:
 pop r15

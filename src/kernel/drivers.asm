@@ -99,7 +99,7 @@ jmp .copy_sections
 mov edi, dword [r12 + 0x26]
 test edi, edi
 jz .no_relocs
-    
+
 lea rbx, [r12 + rdi]
 cmp dword [rbx], 0x5652444B
 jne .fail
