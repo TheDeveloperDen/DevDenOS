@@ -153,15 +153,6 @@ mov rdi, rax
 mov rsi, rdx
 call load_userspace_process
 
-mov rdi, user_program2
-call fat32_load_file
-
-test rax, rax
-jz .fail
-
-mov rdi, rax
-mov rsi, rdx
-call load_userspace_process
 
 .fail:
 sti
@@ -174,7 +165,6 @@ jmp .idle
 
 
 user_program: db "den/example.dde",0
-user_program2: db "den/test_program.dde",0
 
 
 %include "kernel/paging.asm"
