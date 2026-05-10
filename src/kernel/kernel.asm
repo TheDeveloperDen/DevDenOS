@@ -130,7 +130,11 @@ ltr ax
 
 call idt_init
 call remap_pic
-call pit_init
+;call pit_init
+
+call disable_pic
+call lapic_init
+call ioapic_init
 
 call fat32_init
 
@@ -149,10 +153,20 @@ mov rdi, rax
 mov rsi, rdx
 call load_userspace_process
 
+mov rdi, user_program2
+call fat32_load_file
+
+test rax, rax
+jz .fail
+
+mov rdi, rax
+mov rsi, rdx
+call load_userspace_process
+
 .fail:
 sti
 
-
+int 0x80
 
 .idle:
 hlt
@@ -160,7 +174,7 @@ jmp .idle
 
 
 user_program: db "den/example.dde",0
-
+user_program2: db "den/test_program.dde",0
 
 
 %include "kernel/paging.asm"

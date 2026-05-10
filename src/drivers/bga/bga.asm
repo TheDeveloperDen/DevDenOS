@@ -53,6 +53,9 @@ je .do_init
 cmp rdi, 2
 je .put_pixel
 
+cmp rdi, 3
+je .set_res
+
 mov rax, -1
 jmp .done
 
@@ -83,11 +86,6 @@ mov rax, 0
 jmp .done
 
 .do_init:
-mov r8, [rsi]
-mov r9, [rsi + 8]
-mov [vwidth], r8
-mov [vheight], r9
-
 mov rdi, 0x1234
 mov rsi, 0x1111
 mov rax, [api_table]
@@ -111,6 +109,56 @@ call rax
 
 and eax, 0xFFFFFFF0
 mov [lfb_base], rax
+
+mov r14, 2048
+mov r12, 0xE0000000
+mov r13,[lfb_base]
+
+.map_loop:
+test r14, r14
+jz .map_done
+
+mov rdi, r12
+mov rsi, r13
+mov rdx, 7 
+mov rax, [api_table]
+mov rax, [rax + 16]
+call rax
+
+add r12, 4096
+add r13, 4096
+dec r14
+jmp .map_loop
+
+.map_done:
+mov dx, 0x01CE
+mov ax, 1
+out dx, ax
+mov dx, 0x01CF
+in ax, dx
+mov [vwidth], rax
+
+mov dx, 0x01CE
+mov ax, 2
+out dx, ax
+mov dx, 0x01CF
+in ax, dx
+mov [vheight], rax
+
+mov rax, 0xE0000000
+test rbx, rbx
+jz .skip_out
+mov [rbx], rax
+
+.skip_out:
+mov rax, 1
+jmp .done
+
+.set_res:
+mov r8, [rsi]
+mov r9, [rsi + 8]
+mov [vwidth], r8
+mov [vheight], r9
 
 mov dx, 0x01CE
 mov ax, 4
@@ -147,35 +195,6 @@ mov dx, 0x01CF
 mov ax, 0x41
 out dx, ax
 
-mov rax, [vwidth]
-imul rax, [vheight]
-shl rax, 2
-add rax, 4095
-shr rax, 12
-mov r14, rax
-
-mov r12, 0xE0000000
-mov r13, [lfb_base]
-
-.map_loop:
-test r14, r14
-jz .map_done
-
-mov rdi, r12
-mov rsi, r13
-mov rdx, 7 
-mov rax, [api_table]
-mov rax, [rax + 16]
-call rax
-
-add r12, 4096
-add r13, 4096
-dec r14
-jmp .map_loop
-
-.map_done:
-mov rax, 0xE0000000
-mov [rbx], rax
 mov rax, 1
 jmp .done
 

@@ -70,14 +70,14 @@ shr rax, 16
 mov [rbx + 8], eax
 mov dword [rbx + 12], 0
 
-in al, 0x21
-and al, 0xFD
-and al, 0xFB
-out 0x21, al
+;in al, 0x21
+;and al, 0xFD
+;and al, 0xFB
+;out 0x21, al
 
-in al, 0xA1
-and al, 0xEF
-out 0xA1, al
+;in al, 0xA1
+;and al, 0xEF
+;out 0xA1, al
 
 call mouse_init
 
@@ -270,9 +270,12 @@ jmp .done
 mov byte [mouse_cycle], 0
 
 .done:
-mov al, 0x20
-out 0xA0, al
-out 0x20, al
+;mov al, 0x20
+;out 0xA0, al
+;out 0x20, al
+
+mov rax, 0xFFFF8000FEE00000
+mov dword [rax + 0xB0], 0
 
 pop r11
 pop r10
@@ -440,8 +443,11 @@ jmp .done
 xor byte [caps_state], 1
 
 .done:
-mov al, 0x20
-out 0x20, al
+;mov al, 0x20
+;out 0x20, al
+
+mov rax, 0xFFFF8000FEE00000
+mov dword [rax + 0xB0], 0
 
 pop rdx
 pop rcx

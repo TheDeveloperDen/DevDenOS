@@ -5,7 +5,7 @@ nasm -I src/ -fbin src/bootloader/2ndStage.asm -o out/2ndStage.bin
 nasm -I src/ -fbin src/kernel/kernel.asm -o out/KERNEL.BIN
 
 # programs
-nasm -fbin src/progs/example/example_prog.asm -o out/example.dde
+nasm -I src/progs/example -fbin src/progs/example/example_prog.asm -o out/example.dde
 
 # drivers
 nasm -fbin src/drivers/bga/bga.asm -o out/bga.dde
@@ -28,6 +28,7 @@ mcopy -i out/devdenOS.img out/ps2.dde ::/ps2.dde
 
 # images cpy
 mcopy -i out/devdenOS.img img/cursors/cursor.tga ::/den/cursors/cursor.tga
+mcopy -i out/devdenOS.img img/cursors/icursor.tga ::/den/cursors/icursor.tga
 
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 count=3 conv=notrunc
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 skip=93 seek=93 count=417 conv=notrunc

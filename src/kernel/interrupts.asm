@@ -83,6 +83,11 @@ mov rdi, 0x81
 mov rsi, 0xEE
 call idt_set_entry
 
+lea rax, [isr_255]
+mov rdi, 0xFF
+mov rsi, 0x8E
+call idt_set_entry
+
 lidt [idtr]
 
 pop rdi
@@ -176,11 +181,74 @@ out 0x20, al
 pop rax
 ret
 
+disable_pic:
+mov al, 0xff
+out 0xa1, al
+out 0x21, al
+ret
+
+lapic_init:
+mov rdi, 0xFFFF8000FEE00000
+mov rsi, 0xFEE00000
+mov rdx, 3
+call mapPage
+
+mov rax, 0xFFFF8000FEE00000
+
+mov dword[rax + 0xF0], 0x1FF
+mov dword[rax + 0x80], 0
+mov dword [rax + 0x3E0], 0x03
+mov dword [rax + 0x320], 0x20020
+mov dword [rax + 0x380], 1000000
+ret
+
+lapic_eoi:
+mov rax, 0xFFFF8000FEE00000
+mov dword [rax + 0xB0], 0
+ret
+
+
+ioapic_init:
+mov rdi, 0xFFFF8000FEC00000
+mov rsi, 0xFEC00000
+mov rdx, 3
+call mapPage
+
+mov rax, 0xFFFF8000FEC00000
+
+xor ecx, ecx
+.mask_loop:
+mov edx, ecx
+shl edx, 1
+add edx, 0x10
+
+mov dword [rax], edx
+mov dword [rax + 0x10], 0x10000
+
+inc ecx
+cmp ecx, 24
+jl .mask_loop
+
+mov dword [rax], 0x12
+mov dword [rax + 0x10], 33
+mov dword [rax], 0x13
+mov dword[rax + 0x10], 0
+
+mov dword[rax], 0x28
+mov dword [rax + 0x10], 44
+mov dword [rax], 0x29
+mov dword [rax + 0x10], 0
+
+ret
+
 ISR_ERR DIV, 0x4f44
 ISR_ERR GPF, 0x4f47
 ISR_ERR PF, 0x4f50
 ISR_ERR DF, 0x4f46
 ISR_ERR UD, 0x4f55
+
+isr_255:
+iretq
 
 isr_SYSCALL:
 cmp rax, 1
@@ -197,6 +265,56 @@ cmp rax, 6
 je .sys_driver_invoke
 cmp rax, 7
 je .sys_load_driver
+cmp rax, 8
+je .sys_read_file
+iretq
+
+;; rax = 8
+;; rdi = filename
+;; rsi = buffer (0 to get size only)
+.sys_read_file:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+mov rbx, rsi
+call fat32_find_file
+test rax, rax
+jz .read_file_fail
+
+test rbx, rbx
+jz .read_file_size
+
+push rdx
+mov rdi, rax
+mov rsi, rbx
+call fat32_read_file
+pop rax
+jmp .read_file_done
+
+.read_file_size:
+mov rax, rdx
+jmp .read_file_done
+
+.read_file_fail:
+mov rax, -1
+
+.read_file_done:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
 iretq
 
 ;; rax = 5
@@ -817,8 +935,7 @@ push rax
 
 inc qword [pit_tick]
 
-mov rdi, 0
-call pic_eoi
+call lapic_eoi
 
 mov rdi, rsp
 call schedule
