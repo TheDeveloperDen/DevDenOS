@@ -1,15 +1,33 @@
-mkdir out
+set -e
+mkdir -p out
+
 nasm -I src/ -fbin src/bootloader/bootloader.asm -o out/bootloader.bin
 nasm -I src/ -fbin src/bootloader/2ndStage.asm -o out/2ndStage.bin
-
 nasm -I src/ -fbin src/kernel/kernel.asm -o out/KERNEL.BIN
 
 # programs
-nasm -I src/progs/example -fbin src/progs/example/example_prog.asm -o out/example.dde
+PROGRAMS=()
+for prog_dir in src/progs/*/; do
+prog_asm="${prog_dir}$(basename "$prog_dir").asm"
+
+if [[ -f "$prog_asm" ]]; then
+prog_name=$(basename "$prog_asm" .asm)
+nasm -I "src/progs/$prog_name" -fbin "$prog_asm" -o "out/$prog_name.dde"
+PROGRAMS+=("$prog_name")
+fi
+done
 
 # drivers
-nasm -fbin src/drivers/bga/bga.asm -o out/bga.dde
-nasm -fbin src/drivers/ps2/ps2.asm -o out/ps2.dde
+DRIVERS=()
+for drv_dir in src/drivers/*/; do
+drv_asm="${drv_dir}$(basename "$drv_dir").asm"
+
+if [[ -f "$drv_asm" ]]; then
+drv_name=$(basename "$drv_asm" .asm)
+nasm -I "src/drivers/$drv_name" -fbin "$drv_asm" -o "out/$drv_name.dde"
+DRIVERS+=("$drv_name")
+fi
+done
 
 dd if=/dev/zero of=out/devdenOS.img bs=1M count=48
 mkfs.fat -F 32 out/devdenOS.img
@@ -20,11 +38,14 @@ mmd -i out/devdenOS.img ::/den/cursors
 mcopy -i out/devdenOS.img out/KERNEL.BIN ::/KERNEL.BIN
 
 # programs cpy
-mcopy -i out/devdenOS.img out/example.dde ::/den/example.dde
+for prog_name in "${PROGRAMS[@]}"; do
+mcopy -i out/devdenOS.img "out/$prog_name.dde" "::/den/$prog_name.dde"
+done
 
 # drivers cpy
-mcopy -i out/devdenOS.img out/bga.dde ::/bga.dde
-mcopy -i out/devdenOS.img out/ps2.dde ::/ps2.dde
+for drv_name in "${DRIVERS[@]}"; do
+mcopy -i out/devdenOS.img "out/$drv_name.dde" "::$drv_name.dde"
+done
 
 # images cpy
 mcopy -i out/devdenOS.img img/cursors/cursor.tga ::/den/cursors/cursor.tga
