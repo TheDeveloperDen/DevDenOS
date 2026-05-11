@@ -134,6 +134,13 @@ push r15
 mov r12, rdi
 mov r13d, dword [root_cluster]
 
+lea r8, [rel lfn_buf]
+mov rcx, 32
+xor rax, rax
+.clear_lfn_init:
+mov[r8 + rcx*8 - 8], rax
+loop .clear_lfn_init
+
 .next_token:
 cmp byte [r12], '/'
 jne .copy_token
@@ -292,6 +299,8 @@ pop r12
 pop rbx
 ret
 
+;; rdi = dest buffer
+;; rsi = LFN directory entry
 extract_lfn:
 push rbx
 mov rcx, 13
@@ -434,5 +443,486 @@ xor rdx, rdx
 .done:
 pop r13
 pop r12
+pop rbx
+ret
+
+;; rax = allocated cluster
+fat32_alloc_cluster:
+push rbx
+mov rdi, 2
+
+.scan:
+call fat32_get_next_cluster
+test eax, eax
+jz .found
+
+inc rdi
+jmp .scan
+
+.found:
+mov rax, rdi
+pop rbx
+ret
+
+;; rdi = cluster
+;; rsi = buffer
+fat32_write_cluster:
+push rbx
+push r12
+mov r12, rsi
+
+mov eax, edi
+sub eax, 2
+imul eax, dword [spc]
+add eax, dword [data_lba]
+
+mov rdi, rax
+mov esi, dword [spc]
+mov rdx, r12
+call ata_write64
+
+pop r12
+pop rbx
+ret
+
+;; rdi = cluster
+;; rsi = next cluster value
+fat32_set_next_cluster:
+push rbx
+push r12
+push r13
+mov rbx, rdi
+mov rax, rbx
+shl rax, 2
+mov r12, rax
+shr r12, 9
+add r12d, dword [fat_lba]
+
+mov r13, rax
+and r13, 511
+
+mov edi, r12d
+push rsi
+mov rsi, 1
+lea rdx, [fat_buf]
+call ata_read64
+pop rsi
+
+lea rax, [fat_buf]
+mov [rax + r13], esi
+
+mov edi, r12d
+mov rsi, 1
+lea rdx, [fat_buf]
+call ata_write64
+
+mov dword [cached_fat_sector], r12d
+pop r13
+pop r12
+pop rbx
+ret
+
+;; rdi = pointer to SFN filename
+lfn_write_offsets: db 1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30
+sfn_checksum:
+push rcx
+push rdi
+xor rax, rax
+mov rcx, 11
+
+.chk_loop:
+ror al, 1
+add al, byte [rdi]
+inc rdi
+dec rcx
+jnz .chk_loop
+pop rdi
+pop rcx
+ret
+
+;; rdi = original filename
+;; rsi = dest buffer
+generate_sfn:
+push rdi
+push rsi
+push rcx
+push rax
+push r8
+push r9
+
+push rdi
+push rsi
+mov rdi, rsi
+mov rcx, 11
+mov al, ' '
+rep stosb
+pop rsi
+pop rdi
+
+mov rcx, 6
+mov r8, rdi
+mov r9, rsi
+
+.name_loop:
+mov al,[rdi]
+cmp al, '.'
+je .do_tilde
+cmp al, 0
+je .do_tilde
+cmp al, 'a'
+jb .store
+cmp al, 'z'
+ja .store
+sub al, 32
+
+.store:
+mov [rsi], al
+inc rdi
+inc rsi
+dec rcx
+jnz .name_loop
+
+.find_ext:
+mov al, [rdi]
+cmp al, '.'
+je .do_tilde
+cmp al, 0
+je .do_tilde
+inc rdi
+jmp .find_ext
+
+.do_tilde:
+mov byte [rsi], '~'
+mov byte[rsi+1], '1'
+mov rdi, r8
+
+.ext_find:
+mov al, [rdi]
+cmp al, 0
+je .done
+cmp al, '.'
+je .copy_ext
+inc rdi
+jmp .ext_find
+
+.copy_ext:
+inc rdi
+lea rsi, [r9 + 8]
+mov rcx, 3
+.ext_loop:
+mov al, [rdi]
+cmp al, 0
+je .done
+
+cmp al, 'a'
+jb .store_ext
+
+cmp al, 'z'
+ja .store_ext
+sub al, 32
+
+.store_ext:
+mov [rsi], al
+inc rdi
+inc rsi
+dec rcx
+jnz .ext_loop
+
+.done:
+pop r9
+pop r8
+pop rax
+pop rcx
+pop rsi
+pop rdi
+ret
+
+;; rdi = filename
+;; rsi = buffer
+;; rdx = size
+fat32_write_file:
+push rbx
+push rcx
+push rdi
+push rsi
+push rdx
+push r12
+push r13
+push r14
+push r15
+
+mov r12, rsi
+mov r13, rdx
+mov r14, rdi
+
+call fat32_find_file
+test rax, rax
+jnz .do_write
+
+mov rbx, r14
+xor rcx, rcx
+
+.find_slash:
+mov al, [rbx]
+test al, al
+jz .slash_done
+cmp al, '/'
+jne .next_char
+mov rcx, rbx
+
+.next_char:
+inc rbx
+jmp .find_slash
+
+.slash_done:
+test rcx, rcx
+jz .in_root
+
+cmp rcx, r14
+je .root_slash
+
+mov byte [rcx], 0
+mov rdi, r14
+push rcx
+call fat32_find_file
+pop rcx
+mov byte [rcx], '/'
+
+test rax, rax
+jz .fail
+mov r15, rax
+lea r14, [rcx + 1]
+jmp .build_name
+
+.root_slash:
+mov r15, [root_cluster]
+lea r14, [rcx + 1]
+jmp .build_name
+
+.in_root:
+mov r15,[root_cluster]
+
+.build_name:
+mov rdi, r14
+lea rsi,[rel sfn_buf]
+call generate_sfn
+
+mov rdi, r14
+xor rcx, rcx
+.len_loop:
+cmp byte [rdi + rcx], 0
+je .len_done
+inc rcx
+jmp .len_loop
+
+.len_done:
+add rcx, 12
+mov rax, rcx
+xor rdx, rdx
+mov rcx, 13
+div rcx
+mov r10, rax
+mov r11, r10
+inc r11
+
+.scan_dir:
+mov rdi, r15
+lea rsi, [rel dir_buf]
+call fat32_read_cluster
+
+lea rbx, [rel dir_buf]
+mov ecx, dword [spc]
+shl ecx, 9
+add rcx, rbx
+
+xor r8, r8
+
+.check_slot:
+cmp rbx, rcx
+jae .next_dir
+cmp byte[rbx], 0
+je .found_empty
+cmp byte [rbx], 0xE5
+je .found_empty
+
+xor r8, r8
+jmp .slot_continue
+
+.found_empty:
+test r8, r8
+jnz .inc_count
+mov r9, rbx
+
+.inc_count:
+inc r8
+
+cmp byte [rbx], 0
+jne .check_done
+lea rax, [rbx + 32]
+cmp rax, rcx
+jae .check_done
+mov byte [rax], 0
+
+.check_done:
+cmp r8, r11
+je .found_slots
+
+.slot_continue:
+add rbx, 32
+jmp .check_slot
+
+.next_dir:
+mov rdi, r15
+call fat32_get_next_cluster
+cmp eax, 0x0FFFFFF8
+jae .fail
+mov r15, rax
+jmp .scan_dir
+
+.found_slots:
+lea rdi, [rel sfn_buf]
+call sfn_checksum
+mov r11b, al
+
+mov rbx, r9
+mov rcx, r10
+
+.lfn_loop:
+test rcx, rcx
+jz .write_sfn
+
+mov al, cl
+cmp rcx, r10
+jne .not_last_lfn
+or al, 0x40
+.not_last_lfn:
+mov [rbx], al
+mov byte [rbx + 11], 0x0F
+mov byte[rbx + 12], 0
+mov [rbx + 13], r11b
+mov word[rbx + 26], 0
+
+mov rax, rcx
+dec rax
+imul rax, 13
+mov rdi, r14
+add rdi, rax
+
+push rcx
+push rbx
+lea rdx, [rel lfn_write_offsets]
+mov rcx, 13
+xor r9, r9
+.lfn_char_loop:
+movzx r8, byte [rdx]
+cmp r9, 1
+je .pad_ff
+mov al,[rdi]
+test al, al
+jz .pad_null
+
+mov [rbx + r8], al
+mov byte [rbx + r8 + 1], 0
+inc rdi
+jmp .next_lfn_char
+
+.pad_null:
+mov word [rbx + r8], 0x0000
+mov r9, 1
+jmp .next_lfn_char
+
+.pad_ff:
+mov word [rbx + r8], 0xFFFF
+
+.next_lfn_char:
+inc rdx
+dec rcx
+jnz .lfn_char_loop
+
+pop rbx
+pop rcx
+add rbx, 32
+dec rcx
+jmp .lfn_loop
+
+.write_sfn:
+call fat32_alloc_cluster
+push rax
+mov rdi, rax
+mov rsi, 0x0FFFFFF8
+call fat32_set_next_cluster
+pop rax
+
+push rax
+mov rdi, rbx
+lea rsi, [rel sfn_buf]
+mov rcx, 11
+rep movsb
+
+mov byte [rbx + 11], 0x20
+mov rdx, r13
+mov dword [rbx + 28], edx
+
+pop rax
+mov word [rbx + 26], ax
+shr eax, 16
+mov word [rbx + 20], ax
+
+mov rdi, r15
+lea rsi, [rel dir_buf]
+call fat32_write_cluster
+
+movzx rax, word[rbx + 26]
+movzx rcx, word [rbx + 20]
+shl rcx, 16
+or rax, rcx
+
+.do_write:
+mov r15, rax
+
+.write_loop:
+mov rdi, r15
+mov rsi, r12
+call fat32_write_cluster
+
+mov eax, dword [spc]
+shl eax, 9
+add r12, rax
+sub r13, rax
+jle .done
+
+mov rdi, r15
+call fat32_get_next_cluster
+cmp eax, 0x0FFFFFF8
+jae .alloc_next
+mov r15, rax
+jmp .write_loop
+
+.alloc_next:
+call fat32_alloc_cluster
+push rax
+mov rdi, r15
+mov rsi, rax
+call fat32_set_next_cluster
+
+pop rax
+mov rdi, rax
+mov rsi, 0x0FFFFFF8
+call fat32_set_next_cluster
+mov r15, rax
+jmp .write_loop
+
+.fail:
+mov rax, -1
+
+.done:
+pop r15
+pop r14
+pop r13
+pop r12
+pop rdx
+pop rsi
+pop rdi
+pop rcx
 pop rbx
 ret

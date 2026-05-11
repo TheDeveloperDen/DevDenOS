@@ -1,6 +1,9 @@
 [bits 64]
 default rel
 
+;; rdi = TGA buffer
+;; rsi = buffer size
+;; rax = allocated ARGB image buffer (0 on fail)
 tga_parse:
 push rbp
 mov rbp, rsp

@@ -267,6 +267,77 @@ cmp rax, 7
 je .sys_load_driver
 cmp rax, 8
 je .sys_read_file
+cmp rax, 9
+je .sys_write_file
+cmp rax, 10
+je .sys_spawn
+iretq
+
+;; rax = 10
+;; rdi = filename
+.sys_spawn:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call fat32_load_file
+test rax, rax
+jz .spawn_fail
+
+mov rdi, rax
+mov rsi, rdx
+call load_userspace_process
+
+mov rax, 0
+jmp .spawn_done
+
+.spawn_fail:
+mov rax, -1
+
+.spawn_done:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 9
+;; rdi = filename
+;; rsi = buffer
+;; rdx = size
+.sys_write_file:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call fat32_write_file
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
 iretq
 
 ;; rax = 8
@@ -458,12 +529,12 @@ push rdi
 push rsi
 
 mov rdi, 0xE0000000
-mov rsi, 0xE0000000 + 107520
-mov rcx, 591360
+mov rsi, 0xE0000000 + (1680 * 16 * 4)
+mov rcx, (1680 * (720 - 16) * 4) / 8
 rep movsq
 
-mov rdi, 0xE0000000 + 4730880
-mov rcx, 13440
+mov rdi, 0xE0000000 + (1680 * (720 - 16) * 4)
+mov rcx, (1680 * 16 * 4) / 8
 xor rax, rax
 rep stosq
 

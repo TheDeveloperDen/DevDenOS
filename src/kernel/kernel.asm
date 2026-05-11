@@ -5,7 +5,7 @@ org 0x100000
 entry:
 
 mov edi, pml4_table
-mov ecx, 3072
+mov ecx, (4096 + 4096 + 32768) / 4 
 xor eax, eax
 rep stosd
 
