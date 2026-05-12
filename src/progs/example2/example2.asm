@@ -88,10 +88,6 @@ lea rsi, [msg]
 mov rdx, msg_len
 int 0x81
 
-;; rax = 9
-;; rdi = filename
-;; rsi = buffer
-;; rdx = size
 
 ;jmp .exit
 
@@ -121,21 +117,22 @@ int 0x81
 
 test rax, rax
 jz .exit
-mov [libc_entry], rax
 
 call rax
-mov [libc_dispatch], rax
+
+mov rbx, [rax + 0]
+mov [ptr_printf], rbx
 
 lea rdi, [format_str]
 lea rsi, [crow]
-
-mov rax, [libc_dispatch]
-call[rax]
+call printf
 
 .exit:
 mov rax, 1
 int 0x81
 
+
+printf: jmp [ptr_printf]
 
 msg: db "Loaded from userspace",10
 msg_len equ $ - msg
@@ -164,7 +161,11 @@ newline: db 10
 read_buffer: times 256 db 0
 
 align 8
-num_buf: times 32 db 0
+ptr_printf: dq 0
+
+
+
+
 
 align 4096
 prog_end:
