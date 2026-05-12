@@ -13,11 +13,15 @@ cursor_y dq 0
 
 pit_tick dq 0
 
+bg_buffer dq 0
+
 %include "drivers/bga/vga_font.asm"
 
 section .bss
 align 16
 idt_table: resb 256 * 16
+
+text_buffer resb 210 * 45
 
 
 section .text
@@ -273,8 +277,19 @@ cmp rax, 10
 je .sys_spawn
 cmp rax, 11
 je .sys_load_shlib
+
+
+cmp rax, 12
+je .sys_get_cursor
 iretq
 
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;              SOON DECREPITATED                ;;
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.sys_get_cursor:
+mov rax, [cursor_x]
+mov rdx, [cursor_y]
+iretq
 
 ;; rax = 11
 ;; rdi = filename
@@ -650,6 +665,39 @@ push r8
 push r9
 push r10
 
+cmp qword [bg_buffer], 0
+jne .skip_bg
+
+push rax
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+mov rdi, 1680 * 720 * 4
+call kmalloc
+mov [bg_buffer], rax
+
+mov rdi, rax
+mov rsi, 0xE0000000
+mov rcx, (1680 * 720 * 4) / 8
+rep movsq
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rax
+
+.skip_bg:
 mov rbx, rsi
 mov rcx, rdx
 
@@ -667,6 +715,22 @@ je .backspace
 
 call .draw_char
 
+push rax
+push r8
+push rdi
+mov rax, [cursor_y]
+shr rax, 4
+imul rax, 210
+mov r8, [cursor_x]
+shr r8, 3
+add rax, r8
+lea rdi, [text_buffer]
+mov r8b, byte [rbx]
+mov [rdi + rax], r8b
+pop rdi
+pop r8
+pop rax
+
 add qword [cursor_x], 8
 cmp qword [cursor_x], 1680
 jb .char_done
@@ -683,15 +747,22 @@ push rcx
 push rdi
 push rsi
 
+mov rdi, text_buffer
+mov rsi, text_buffer + 210
+mov rcx, 210 * 44
+rep movsb
+
+mov rdi, text_buffer + 210 * 44
+mov rcx, 210
+xor al, al
+rep stosb
+
 mov rdi, 0xE0000000
-mov rsi, 0xE0000000 + (1680 * 16 * 4)
-mov rcx, (1680 * (720 - 16) * 4) / 8
+mov rsi, [bg_buffer]
+mov rcx, (1680 * 720 * 4) / 8
 rep movsq
 
-mov rdi, 0xE0000000 + (1680 * (720 - 16) * 4)
-mov rcx, (1680 * 16 * 4) / 8
-xor rax, rax
-rep stosq
+call .redraw_all_text
 
 pop rsi
 pop rdi
@@ -714,11 +785,52 @@ sub qword [cursor_y], 16
 mov qword[cursor_x], 1672
 
 .bs_clear:
+push rdi
+push rcx
 push rax
-mov rax, 32
-call .draw_char
+push rsi
+push r8
+
+mov rax, [cursor_y]
+shr rax, 4
+imul rax, 210
+mov rdi, [cursor_x]
+shr rdi, 3
+add rax, rdi
+lea rdi, [text_buffer]
+mov byte [rdi + rax], 0
+
+mov rdi, [cursor_y]
+imul rdi, 1680
+add rdi, [cursor_x]
+shl rdi, 2
+
+mov rsi, [bg_buffer]
+add rsi, rdi
+mov rax, 0xE0000000
+add rdi, rax
+
+mov rcx, 16
+
+.clear_bs_loop:
+mov r8, [rsi]
+mov [rdi], r8
+mov r8, [rsi+8]
+mov [rdi+8], r8
+mov r8, [rsi+16]
+mov [rdi+16], r8
+mov r8, [rsi+24]
+mov [rdi+24], r8
+add rdi, 1680 * 4
+add rsi, 1680 * 4
+dec rcx
+jnz .clear_bs_loop
+
+pop r8
+pop rsi
 pop rax
- 
+pop rcx
+pop rdi
 
 .char_done:
 inc rbx
@@ -735,6 +847,68 @@ pop rdx
 pop rcx
 pop rbx
 iretq
+
+.redraw_all_text:
+push rax
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+
+mov r8, [cursor_x]
+mov r9, [cursor_y]
+push r8
+push r9
+
+mov qword [cursor_y], 0
+lea r10, [text_buffer]
+
+.redraw_y_loop:
+cmp qword [cursor_y], 720
+jge .redraw_done
+
+mov qword [cursor_x], 0
+
+.redraw_x_loop:
+cmp qword [cursor_x], 1680
+jge .redraw_next_y
+
+movzx rax, byte [r10]
+inc r10
+
+test rax, rax
+jz .redraw_skip_char
+
+call .draw_char
+
+.redraw_skip_char:
+add qword [cursor_x], 8
+jmp .redraw_x_loop
+
+.redraw_next_y:
+add qword [cursor_y], 16
+jmp .redraw_y_loop
+
+.redraw_done:
+pop r9
+pop r8
+mov [cursor_y], r9
+mov [cursor_x], r8
+
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+pop rax
+ret
 
 ;; rax = character to draw
 .draw_char:

@@ -45,7 +45,7 @@ int 0x81
 
 
 
-xor r12, r12
+mov r12, 1
 
 .print_loop:
 cmp r12, [argc]
