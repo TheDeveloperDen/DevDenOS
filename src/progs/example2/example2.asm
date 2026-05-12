@@ -28,11 +28,12 @@ dq prog_end - header ; size in file
 
 align 16
 _start:
+mov [argc], rdi
+mov [argv], rsi
 
 mov rax, 7
 lea rdi, [bga_file]
 int 0x81
-
 mov [handle], rax
 
 mov rax, 6
@@ -41,6 +42,45 @@ mov rsi, 1
 xor rdx, rdx
 xor r10, r10
 int 0x81
+
+
+
+xor r12, r12
+
+.print_loop:
+cmp r12, [argc]
+jge .args_done
+
+mov rbx, [argv]
+mov rsi,[rbx + r12*8]
+
+mov rdx, rsi
+
+.strlen:
+cmp byte [rdx], 0
+je .got_len
+inc rdx
+jmp .strlen
+
+.got_len:
+sub rdx, rsi
+
+mov rax, 2
+mov rdi, 1
+int 0x81
+
+mov rax, 2
+mov rdi, 1
+lea rsi, [newline]
+mov rdx, 1
+int 0x81
+
+inc r12
+jmp .print_loop
+
+.args_done:
+
+
 
 mov rax, 2
 mov rdi, 1
@@ -52,6 +92,8 @@ int 0x81
 ;; rdi = filename
 ;; rsi = buffer
 ;; rdx = size
+
+;jmp .exit
 
 mov rax, 9
 lea rdi, [file]
@@ -73,24 +115,56 @@ mov rdi, 1
 lea rsi, [read_buffer]
 int 0x81
 
+mov rax, 11
+lea rdi, [libc]
+int 0x81
+
+test rax, rax
+jz .exit
+mov [libc_entry], rax
+
+call rax
+mov [libc_dispatch], rax
+
+lea rdi, [format_str]
+lea rsi, [crow]
+
+mov rax, [libc_dispatch]
+call[rax]
+
 .exit:
 mov rax, 1
 int 0x81
 
-msg: db "Loaded from userspace"
+
+msg: db "Loaded from userspace",10
 msg_len equ $ - msg
 
-bga_file: db "bga.dde",0
+bga_file: db "den/drivers/bga.dde",0
 
 file: db "den/verlongfilenamesss1234.txt",0
+
+libc: db "den/libs/libc.dde", 0
+
+libc_entry: dq 0
+libc_dispatch: dq 0
 
 contents: db "Hello, World!"
 contents_len equ $ - contents
 
+format_str: db 10,"Hello, %s", 10, 0
+crow:  db "CRO!", 0
+
 handle: dq 1
+
+argc: dq 0
+argv: dq 0
+newline: db 10
 
 read_buffer: times 256 db 0
 
+align 8
+num_buf: times 32 db 0
 
 align 4096
 prog_end:

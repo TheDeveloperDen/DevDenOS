@@ -271,10 +271,69 @@ cmp rax, 9
 je .sys_write_file
 cmp rax, 10
 je .sys_spawn
+cmp rax, 11
+je .sys_load_shlib
+iretq
+
+
+;; rax = 11
+;; rdi = filename
+.sys_load_shlib:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+
+call fat32_lock
+call fat32_load_file
+
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
+
+test rax, rax
+jz .load_shlib_fail
+
+mov r12, rax
+mov rdi, rax
+mov rsi, rdx
+call load_shared_library
+mov rbx, rax
+
+mov rdi, r12
+call kfree
+
+mov rax, rbx
+jmp .load_shlib_done
+
+.load_shlib_fail:
+xor rax, rax
+
+.load_shlib_done:
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
 iretq
 
 ;; rax = 10
 ;; rdi = filename
+;; rsi = argc
+;; rdx = argv
 .sys_spawn:
 push rbx
 push rcx
@@ -285,15 +344,84 @@ push r8
 push r9
 push r10
 push r11
+push r12
+push r13
+push r14
+push r15
 
+mov r12, rsi
+mov r13, rdx
+
+xor r14, r14
+xor r15, r15
+test r12, r12
+jle .load_fat32
+
+xor rbx, rbx
+
+.calc_len:
+cmp rbx, r12
+jge .alloc_args
+mov rcx, [r13 + rbx*8]
+
+.strlen:
+cmp byte [rcx], 0
+je .str_done
+inc rcx
+inc r14
+jmp .strlen
+
+.str_done:
+inc r14
+inc rbx
+jmp .calc_len
+
+.alloc_args:
+mov rdi, r14
+call kmalloc
+mov r15, rax
+
+xor rbx, rbx
+mov rdi, r15
+.copy_strs:
+cmp rbx, r12
+jge .load_fat32
+mov rsi, [r13 + rbx*8]
+.str_cpy:
+mov al, [rsi]
+mov [rdi], al
+inc rsi
+inc rdi
+test al, al
+jnz .str_cpy
+inc rbx
+jmp .copy_strs
+
+.load_fat32:
+mov rdi, [rsp + 64]
+call fat32_lock
 call fat32_load_file
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
 test rax, rax
 jz .spawn_fail
 
 mov rdi, rax
 mov rsi, rdx
+mov rdx, r12
+mov rcx, r15
+mov r8, r14
 call load_userspace_process
 
+test r12, r12
+jle .spawn_ret_ok
+mov rdi, r15
+call kfree
+
+.spawn_ret_ok:
 mov rax, 0
 jmp .spawn_done
 
@@ -301,6 +429,10 @@ jmp .spawn_done
 mov rax, -1
 
 .spawn_done:
+pop r15
+pop r14
+pop r13
+pop r12
 pop r11
 pop r10
 pop r9
@@ -327,7 +459,14 @@ push r9
 push r10
 push r11
 
+call fat32_lock
 call fat32_write_file
+
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
 
 pop r11
 pop r10
@@ -354,6 +493,8 @@ push r9
 push r10
 push r11
 
+call fat32_lock
+
 mov rbx, rsi
 call fat32_find_file
 test rax, rax
@@ -377,6 +518,11 @@ jmp .read_file_done
 mov rax, -1
 
 .read_file_done:
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
 pop r11
 pop r10
 pop r9
@@ -457,7 +603,16 @@ push r9
 push r10
 push r11
 
+call fat32_lock
+
 call fat32_load_file
+
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
+
 test rax, rax
 jz .load_fail
 
@@ -611,10 +766,8 @@ mov rcx, rdi
 
 .col_loop:
 shl dl, 1
-jc .draw_fg
+jnc .next_pixel
 
-mov dword [rcx], 0x00000000
-jmp .next_pixel
 
 .draw_fg:
 mov dword [rcx], 0xFFFFFFFF

@@ -13,7 +13,26 @@ sfn_buf resb 16
 lfn_buf resb 256
 path_token resb 256
 
+section .data
+fat32_lock_flag dd 0
+
 section .text
+
+fat32_lock:
+lock bts dword[fat32_lock_flag], 0
+jnc .done
+
+.spin:
+int 0x80
+lock bts dword[fat32_lock_flag], 0
+jc .spin
+
+.done:
+ret
+
+fat32_unlock:
+mov dword [fat32_lock_flag], 0
+ret
 
 fat32_init:
 movzx eax, word [abs 0x7c0e]
@@ -452,7 +471,9 @@ push rbx
 mov rdi, 2
 
 .scan:
+push rdi
 call fat32_get_next_cluster
+pop rdi
 test eax, eax
 jz .found
 

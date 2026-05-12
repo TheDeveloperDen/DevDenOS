@@ -56,10 +56,91 @@ int 0x81
 test rax, rax
 jz .exit
 
+mov rax, 8
+lea rdi, [wallpaper]
+xor rsi, rsi
+int 0x81
+
+cmp rax, -1
+je .clear_black
+test rax, rax
+jz .clear_black
+
+push rax
+add rax, 4095
+shr rax, 12
+mov rsi, rax
+mov rax, 3
+xor rdi, rdi
+mov rdx, 3
+mov r10, 0x22
+int 0x81
+pop rcx
+
+cmp rax, -1
+je .clear_black
+test rax, rax
+jz .clear_black
+
+mov r13, rax
+mov rax, 8
+lea rdi, [wallpaper]
+mov rsi, r13
+int 0x81
+
+mov rdi, r13
+mov rsi, rax
+call tga_parse
+test rax, rax
+jz .clear_black
+
+mov r14, rax
+mov r8d, dword[r14]
+mov r9d, dword [r14 + 4]
+
+cmp r9d, 720
+jle .height_ok
+mov r9d, 720
+
+.height_ok:
+mov r11d, r8d
+cmp r8d, 1680
+jle .width_ok
+mov r8d, 1680
+
+.width_ok:
+mov rsi, r14
+add rsi, 8
+mov rdi, [out_data]
+xor r10, r10
+
+.row_loop:
+cmp r10d, r9d
+jge .wallpaper_done
+
+mov ecx, r8d
+rep movsd
+
+mov eax, 1680
+sub eax, r8d
+shl eax, 2
+add rdi, rax
+
+mov eax, r11d
+sub eax, r8d
+shl eax, 2
+add rsi, rax
+
+inc r10d
+jmp .row_loop
+
+.clear_black:
 mov rdi, [out_data]
 mov rcx, 1680*720
-mov eax, 0
+xor eax, eax
 rep stosd
+
+.wallpaper_done:
 
 
 
@@ -78,6 +159,8 @@ mov [kbd_handle], rax
 
 mov rax, 10
 lea rdi, [filename]
+mov rsi, 3
+lea rdx, [argv]
 int 0x81
 
 
@@ -323,14 +406,16 @@ ret
 
 %include "tga.asm"
 
-drv_file: db "bga.dde", 0
-kbd_file: db "ps2.dde", 0
+drv_file: db "den/drivers/bga.dde", 0
+kbd_file: db "den/drivers/ps2.dde", 0
 cursor_file: db "den/cursors/cursor.tga", 0
 
 msg: db "Hello Cros"
 msg_len equ $ - msg
 
-filename: db "den/example2.dde",0
+filename: db "den/bin/example2.dde",0
+
+wallpaper: db 'den/manul.tga',0
 
 align 8
 handle:   dq 0
@@ -345,6 +430,13 @@ bg_save_x: dd 0
 bg_save_y: dd 0
 bg_save_w: dd 0
 bg_save_h: dd 0
+
+arg0: db 'example2', 0
+arg1: db 'crows',0
+arg2: db 'chirp',0
+
+argv: dq arg0, arg1, arg2
+
 align 4
 bg_save: times 4096 dd 0
 

@@ -233,6 +233,8 @@ push r8
 push r9
 push r10
 push r11
+push rdi
+push rsi
 
 in al, 0x64
 test al, 0x20
@@ -277,6 +279,8 @@ mov byte [mouse_cycle], 0
 mov rax, 0xFFFF8000FEE00000
 mov dword [rax + 0xB0], 0
 
+pop rsi
+pop rdi
 pop r11
 pop r10
 pop r9

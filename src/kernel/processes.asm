@@ -352,6 +352,8 @@ push r12
 push r13
 push r14
 push r15
+push r10
+push r11
 
 mov r12, rdi
 mov r13, rsi
@@ -385,6 +387,13 @@ xor eax, eax
 rep stosq
 mov rax, r8
 
+mov r10, [rsp + 24]
+mov r11, [rsp + 16]
+
+
+mov [rax + 48], r10
+mov [rax + 40], r11
+
 mov rdi, 88
 push rax
 call kmalloc
@@ -401,6 +410,8 @@ pop r8
 mov [rax + 56], r8
 mov qword [rax + 64], 0
 mov [rax + 72], r9
+
+add rsp, 16
 
 mov rcx, [curr_thread]
 

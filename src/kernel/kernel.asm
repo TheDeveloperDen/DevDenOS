@@ -151,6 +151,8 @@ jz .fail
 
 mov rdi, rax
 mov rsi, rdx
+xor rdx, rdx
+xor rcx, rcx
 call load_userspace_process
 
 
@@ -164,7 +166,7 @@ hlt
 jmp .idle
 
 
-user_program: db "den/example.dde",0
+user_program: db "den/bin/example.dde",0
 
 
 %include "kernel/paging.asm"
