@@ -29,27 +29,48 @@ DRIVERS+=("$drv_name")
 fi
 done
 
+# shared libs
+SLIBS=()
+for sh_libs in src/libs/*/; do
+slib_asm="${sh_libs}$(basename "$sh_libs").asm"
+
+if [[ -f "$slib_asm" ]]; then
+slib_name=$(basename "$slib_asm" .asm)
+nasm -I "src/libs/$slib_name" -fbin "$slib_asm" -o "out/$slib_name.dde"
+SLIBS+=("$slib_name")
+fi
+done
+
 dd if=/dev/zero of=out/devdenOS.img bs=1M count=48
 mkfs.fat -F 32 out/devdenOS.img
 
 mmd -i out/devdenOS.img ::/den
 mmd -i out/devdenOS.img ::/den/cursors
+mmd -i out/devdenOS.img ::/den/bin
+mmd -i out/devdenOS.img ::/den/libs
+mmd -i out/devdenOS.img ::/den/drivers
 
 mcopy -i out/devdenOS.img out/KERNEL.BIN ::/KERNEL.BIN
 
 # programs cpy
 for prog_name in "${PROGRAMS[@]}"; do
-mcopy -i out/devdenOS.img "out/$prog_name.dde" "::/den/$prog_name.dde"
+mcopy -i out/devdenOS.img "out/$prog_name.dde" "::/den/bin/$prog_name.dde"
 done
 
 # drivers cpy
 for drv_name in "${DRIVERS[@]}"; do
-mcopy -i out/devdenOS.img "out/$drv_name.dde" "::$drv_name.dde"
+mcopy -i out/devdenOS.img "out/$drv_name.dde" "::/den/drivers/$drv_name.dde"
+done
+
+# shared libs cpy
+for slib_name in "${SLIBS[@]}"; do
+mcopy -i out/devdenOS.img "out/$slib_name.dde" "::/den/libs/$slib_name.dde"
 done
 
 # images cpy
 mcopy -i out/devdenOS.img img/cursors/cursor.tga ::/den/cursors/cursor.tga
 mcopy -i out/devdenOS.img img/cursors/icursor.tga ::/den/cursors/icursor.tga
+mcopy -i out/devdenOS.img img/manul.tga ::/den/manul.tga
 
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 count=3 conv=notrunc
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 skip=93 seek=93 count=417 conv=notrunc
