@@ -43,26 +43,60 @@ call rax
 mov [glrbm_exports], rax
 
 mov rbx, [glrbm_exports]
-lea rdi, [bga_name]
 call [rbx + 0]
 
-mov rdi, 500
-mov rsi, 300
-mov rdx, 150
-mov rcx, 150
-mov r8, 0x0000FF00
-mov rbx, [glrbm_exports]
-call [rbx + 24]
+mov rdi, 0x0000FF00
+call [rbx + 56]
 
+mov rdi, 0x00FF0000
+call [rbx + 48]
+
+mov rdi, 100
+mov rsi, 100
+mov rdx, 400
+mov rcx, 300
+call [rbx + 80]
+
+mov rdi, 100
+mov rsi, 100
+call [rbx + 32]
+
+mov rdi, 400
+mov rsi, 300
+call [rbx + 40]
+
+mov rdi, 500
+mov rsi, 100
+mov rdx, 600
+mov rcx, 300
+mov r8, 400
+mov r9, 300
+call [rbx + 96]
+
+mov rax, 0x000000FF
+push rax
+mov rax, 600
+push rax
+mov rax, 400
+push rax
+
+mov rdi, 500
+mov rsi, 400
+mov rdx, 0x00FF0000
+mov rcx, 600
+mov r8, 600
+mov r9, 0x0000FF00
+
+call [rbx + 104]
+
+add rsp, 24
 
 .exit:
 mov rax, 1
 int 0x81
 
-
 bga_file: db "den/drivers/bga.dde", 0
 glrbm: db "den/libs/glrbm.dde", 0
-bga_name: db "bga", 0
 
 handle: dq 1
 

@@ -20,7 +20,7 @@ db 0, 0, 0, 0, 0, 0
 opt_hdr:
 db 'K','D','R','V'
 dd 0, 0, 0
-db 'bga'
+db 'gpu'
 times 13 db 0
 opt_hdr_end:
 
