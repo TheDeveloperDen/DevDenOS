@@ -34,15 +34,15 @@ int 0x81
 mov [handle], rax
 
 mov rax, 11
-lea rdi, [gapi_file]
+lea rdi, [glrbm]
 int 0x81
 test rax, rax
 jz .exit
 
 call rax
-mov [gapi_exports], rax
+mov [glrbm_exports], rax
 
-mov rbx, [gapi_exports]
+mov rbx, [glrbm_exports]
 lea rdi, [bga_name]
 call [rbx + 0]
 
@@ -51,7 +51,7 @@ mov rsi, 300
 mov rdx, 150
 mov rcx, 150
 mov r8, 0x0000FF00
-mov rbx, [gapi_exports]
+mov rbx, [glrbm_exports]
 call [rbx + 24]
 
 
@@ -61,13 +61,13 @@ int 0x81
 
 
 bga_file: db "den/drivers/bga.dde", 0
-gapi_file: db "den/libs/dengraphics.dde", 0
+glrbm: db "den/libs/glrbm.dde", 0
 bga_name: db "bga", 0
 
 handle: dq 1
 
 align 8
-gapi_exports: dq 0
+glrbm_exports: dq 0
 
 align 4096
 prog_end:
