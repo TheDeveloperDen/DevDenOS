@@ -216,5 +216,33 @@ Draws an interpolated triangle (Alpha ignored)
 The vertices must form a triangle
 
 
+---
+
+### glrbm_BitBlt
+`uint64_t glrbm_BitBlt(int64_t destX, int64_t destY, int64_t width, int64_t height, const void* src, int64_t srcX, int64_t srcY, uint64_t pitch, uint32_t rop);`
+
+#### Description
+Copies ARGB pixels from a source buffer in memory to the framebuffer at the specified coordinates, returns 1 on successful blit, 0 on failure
+
+#### Arguments
+- `destX`: X destination coordinate
+- `destY`: Y destination corrdinate
+- `width`: Width to copy in pixels
+- `height`: Height to copy in pixels
+- `src`: Ptr to the pixel buffer in ARGB format
+- `srcX`: Starting X coordinate in the src
+- `srcY`: Starting Y coordinate in the src
+- `pitch`: Width of the src buffer in pixels
+- `rop`: Raster Operation
+
+#### Valid Usage
+- `width` and `height` must be > 0
+- `pitch` must be in pixels
+
+#### Raster Operations
+- `0x00CC0020` (SRCCOPY): Overwrites dest with src pixels (default)
+- `0x00EE0086` (SRCPAINT): Bitwise OR (dst = dst | src)
+- `0x008800C6` (SRCAND): Bitwise AND (dst = dst & src)
+- `0x00660046` (SRCINVERT): Bitwise XOR (dst = dst ^ src)
 
 
