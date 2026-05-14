@@ -103,6 +103,8 @@ mov fs, ax
 mov gs, ax
 mov ss, ax
 
+call serial_init
+
 mov rax, 0xb8000
 mov rbx, 0
 
@@ -155,7 +157,6 @@ xor rdx, rdx
 xor rcx, rcx
 call load_userspace_process
 
-
 .fail:
 sti
 
@@ -177,6 +178,7 @@ user_program: db "den/bin/denshell.dde",0
 %include "kernel/fat32.asm"
 %include "kernel/drivers.asm"
 %include "kernel/pci.asm"
+%include "kernel/serial.asm"
 
 %include "drivers/ata/ata64.asm"
 

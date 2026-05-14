@@ -36,7 +36,7 @@ lea r8, [header]
 lea rax, [export_table]
 push rax
 
-mov r9, 14
+mov r9, 15
 
 .reloc_loop:
 mov rcx, [rax]
@@ -65,6 +65,190 @@ dq glrbm_Rectangle ; 10
 dq glrbm_FrameTriangle ; 11
 dq glrbm_FillTriangle ; 12
 dq glrbm_InterpolatedTriangle ; 13
+dq glrbm_BitBlt ; 14
+
+glrbm_BitBlt:
+push rbp
+mov rbp, rsp
+push rbx
+push r12
+push r13
+push r14
+push r15
+
+cmp qword [fb_ptr], 0
+jz .fail
+test r8, r8
+jz .fail
+
+test rdx, rdx
+jle .fail
+test rcx, rcx
+jle .fail
+
+mov r10, [rbp+16]
+mov r11, [rbp+24]
+mov r12, [rbp+32]
+
+cmp rdi, 0
+jge .clip_top
+mov rax, rdi
+neg rax
+sub rdx, rax
+add r9, rax
+xor rdi, rdi
+
+.clip_top:
+cmp rsi, 0
+jge .clip_right
+mov rax, rsi
+neg rax
+sub rcx, rax
+add r10, rax
+xor rsi, rsi
+
+.clip_right:
+mov rax, rdi
+add rax, rdx
+mov r13, [screen_width]
+cmp rax, r13
+jle .clip_bottom
+sub rax, r13
+sub rdx, rax
+
+.clip_bottom:
+mov rax, rsi
+add rax, rcx
+mov r13, [screen_height]
+cmp rax, r13
+jle .clip_check
+sub rax, r13
+sub rcx, rax
+
+.clip_check:
+test rdx, rdx
+jle .fail
+test rcx, rcx
+jle .fail
+
+mov rax, r10
+imul rax, r11
+add rax, r9
+shl rax, 2
+add r8, rax
+
+mov rax, rsi
+mov r13, [screen_width]
+imul rax, r13
+add rax, rdi
+shl rax, 2
+mov r14, [fb_ptr]
+add r14, rax
+
+shl r11, 2
+shl r13, 2
+
+cld
+
+cmp r12, 0x00CC0020
+je .rop_srccopy
+cmp r12, 0x00EE0086
+je .rop_srcpaint
+cmp r12, 0x008800C6
+je .rop_srcand
+cmp r12, 0x00660046
+je .rop_srcinvert
+
+jmp .rop_srccopy
+
+.rop_srccopy:
+.loop_copy:
+push rcx
+mov rcx, rdx
+mov rsi, r8
+mov rdi, r14
+rep movsd
+pop rcx
+add r8, r11
+add r14, r13
+dec rcx
+jnz .loop_copy
+jmp .success
+
+.rop_srcpaint:
+.loop_paint:
+push rcx
+mov rcx, rdx
+mov rsi, r8
+mov rdi, r14
+.paint_inner:
+mov eax, [rsi]
+or [rdi], eax
+add rsi, 4
+add rdi, 4
+dec rcx
+jnz .paint_inner
+pop rcx
+add r8, r11
+add r14, r13
+dec rcx
+jnz .loop_paint
+jmp .success
+
+.rop_srcand:
+.loop_and:
+push rcx
+mov rcx, rdx
+mov rsi, r8
+mov rdi, r14
+.and_inner:
+mov eax, [rsi]
+and [rdi], eax
+add rsi, 4
+add rdi, 4
+dec rcx
+jnz .and_inner
+pop rcx
+add r8, r11
+add r14, r13
+dec rcx
+jnz .loop_and
+jmp .success
+
+.rop_srcinvert:
+.loop_invert:
+push rcx
+mov rcx, rdx
+mov rsi, r8
+mov rdi, r14
+.invert_inner:
+mov eax, [rsi]
+xor [rdi], eax
+add rsi, 4
+add rdi, 4
+dec rcx
+jnz .invert_inner
+pop rcx
+add r8, r11
+add r14, r13
+dec rcx
+jnz .loop_invert
+
+.success:
+mov rax, 1
+jmp .done
+
+.fail:
+xor rax, rax
+
+.done:
+pop r15
+pop r14
+pop r13
+pop r12
+pop rbx
+pop rbp
+ret
 
 glrbm_init:
 push rbp

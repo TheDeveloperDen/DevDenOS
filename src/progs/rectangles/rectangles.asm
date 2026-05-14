@@ -91,6 +91,23 @@ call [rbx + 104]
 
 add rsp, 24
 
+mov rax, 0x00CC0020
+push rax
+mov rax, 100
+push rax
+xor rax, rax
+push rax
+
+mov rdi, 750
+mov rsi, 100
+mov rdx, 100
+mov rcx, 100
+lea r8, [test_bitblt]
+xor r9, r9
+
+call [rbx + 112]
+add rsp, 2
+
 .exit:
 mov rax, 1
 int 0x81
@@ -99,6 +116,9 @@ bga_file: db "den/drivers/bga.dde", 0
 glrbm: db "den/libs/glrbm.dde", 0
 
 handle: dq 1
+
+test_bitblt:
+times 10000 dd 0x000000FF
 
 align 8
 glrbm_exports: dq 0
