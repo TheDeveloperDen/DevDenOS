@@ -254,6 +254,24 @@ ISR_ERR UD, 0x4f55
 isr_255:
 iretq
 
+get_thread_by_tid:
+push rcx
+mov rax, [curr_thread]
+test rax, rax
+jz .tid_not_found
+mov rcx, rax
+.tid_loop:
+cmp [rax + 80], rdi
+je .tid_found
+mov rax, [rax + 8]
+cmp rax, rcx
+jne .tid_loop
+.tid_not_found:
+xor rax, rax
+.tid_found:
+pop rcx
+ret
+
 isr_SYSCALL:
 cmp rax, 1
 je exit_thread
@@ -277,11 +295,188 @@ cmp rax, 10
 je .sys_spawn
 cmp rax, 11
 je .sys_load_shlib
-
+cmp rax, 13
+je .sys_get_tid
+cmp rax, 14
+je .sys_send_msg
+cmp rax, 15
+je .sys_recv_msg
 
 cmp rax, 12
 je .sys_get_cursor
 iretq
+
+;; rax = 13
+.sys_get_tid:
+mov rax, [curr_thread]
+mov rax, [rax + 80]
+iretq
+
+;; rax = 14
+;; rdi = target tid
+;; rsi = msg buffer
+;; rdx = msg len
+.sys_send_msg:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call get_thread_by_tid
+test rax, rax
+jz .send_fail
+
+mov rbx, rax 
+
+mov rdi, rdx
+add rdi, 24
+push rdx
+push rsi
+call kmalloc
+pop rsi
+pop rdx
+
+mov qword [rax], 0 
+mov rcx, [curr_thread]
+mov rcx, [rcx + 80]
+mov [rax + 8], rcx 
+mov [rax + 16], rdx 
+
+push rax
+lea rdi, [rax + 24]
+mov rcx, rdx
+rep movsb
+pop rax
+
+cli
+mov rcx, [rbx + 96] 
+test rcx, rcx
+jnz .append_tail
+
+mov [rbx + 88], rax 
+mov [rbx + 96], rax 
+jmp .send_done
+
+.append_tail:
+mov [rcx], rax 
+mov [rbx + 96], rax 
+
+.send_done:
+sti
+mov rax, 0
+jmp .send_exit
+
+.send_fail:
+mov rax, -1
+
+.send_exit:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+
+
+;; rax = 15
+;; rdi = ptr to store tid
+;; rsi = dest buffer (0 for size only)
+;; rdx = bytes to read
+.sys_recv_msg:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+cli
+mov rbx, [curr_thread]
+mov r8, [rbx + 88] 
+test r8, r8
+jz .recv_empty
+
+test rsi, rsi
+jz .recv_size_only
+
+mov r9, [r8 + 16] 
+cmp rdx, r9
+jb .use_max
+mov rdx, r9
+.use_max:
+
+push rdi
+push rsi
+push rdx
+push r8
+
+mov rdi, rsi
+lea rsi, [r8 + 24]
+mov rcx, rdx
+rep movsb
+
+pop r8
+pop rdx
+pop rsi
+pop rdi
+
+test rdi, rdi
+jz .skip_tid
+mov rcx, [r8 + 8]
+mov [rdi], rcx
+.skip_tid:
+
+mov rcx, [r8] 
+mov [rbx + 88], rcx
+test rcx, rcx
+jnz .not_empty_tail
+mov qword [rbx + 96], 0
+.not_empty_tail:
+
+push rdx
+mov rdi, r8
+call kfree
+pop rdx
+
+mov rax, rdx
+sti
+jmp .recv_exit
+
+.recv_size_only:
+mov rax, [r8 + 16]
+sti
+jmp .recv_exit
+
+.recv_empty:
+sti
+mov rax, -1
+
+.recv_exit:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+
 
 ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;              SOON DECREPITATED                ;;

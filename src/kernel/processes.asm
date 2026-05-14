@@ -4,6 +4,7 @@ default rel
 section .data
 curr_thread dq 0
 thread_to_free dq 0
+next_tid dq 2
 
 ;; 0 : rsp
 ;; 8 : next thread
@@ -12,13 +13,19 @@ thread_to_free dq 0
 ;; 32 : stack base
 ;; 40 : state
 ;; 48 : cr3
+;; 56 : userspace flag
+;; 64 : vma list head
+;; 72 : vma stack start
+;; 80 : thread id
+;; 88 : msg queue head
+;; 96 : msg queue tail
 
 section .text
 
 scheduler_init:
 pushfq
 cli
-mov rdi, 64
+mov rdi, 128
 call kmalloc
 
 mov [curr_thread], rax
@@ -31,6 +38,10 @@ mov qword [rax + 40], 1
 
 mov rcx, cr3
 mov [rax + 48], rcx
+
+mov qword [rax + 80], 1
+mov qword [rax + 88], 0
+mov qword [rax + 96], 0
 
 popfq
 ret
@@ -73,7 +84,7 @@ xor eax, eax
 rep stosq
 mov rax, r8
 
-mov rdi, 64
+mov rdi, 128
 push rax
 call kmalloc
 pop rdx
@@ -87,6 +98,12 @@ mov qword [rax + 40], 1
 mov rcx, cr3
 mov [rax + 48], rcx
 mov qword [rax + 56], 0
+
+mov rcx, [next_tid]
+mov [rax + 80], rcx
+inc qword [next_tid]
+mov qword [rax + 88], 0
+mov qword [rax + 96], 0
 
 mov rcx, [curr_thread]
 mov rdx, [rcx + 8]
@@ -102,6 +119,21 @@ ret
 exit_thread:
 cli
 mov rax, [curr_thread]
+mov rbx, [rax + 88]
+
+.msg_cleanup_loop:
+test rbx, rbx
+jz .msg_cleanup_done
+mov rdi, rbx
+mov rbx, [rdi]
+push rax
+push rbx
+call kfree
+pop rbx
+pop rax
+jmp .msg_cleanup_loop
+.msg_cleanup_done:
+
 mov rbx, [rax + 56]
 test rbx, rbx
 jz .skip_unmap
@@ -394,7 +426,7 @@ mov r11, [rsp + 16]
 mov [rax + 48], r10
 mov [rax + 40], r11
 
-mov rdi, 88
+mov rdi, 128
 push rax
 call kmalloc
 pop rdx
@@ -410,6 +442,12 @@ pop r8
 mov [rax + 56], r8
 mov qword [rax + 64], 0
 mov [rax + 72], r9
+
+mov r8, [next_tid]
+mov [rax + 80], r8
+inc qword [next_tid]
+mov qword [rax + 88], 0
+mov qword [rax + 96], 0
 
 add rsp, 16
 
