@@ -1,0 +1,1590 @@
+[bits 64]
+default rel
+
+
+section .data
+align 8
+idtr:
+dw 256 * 16 - 1
+dq idt_table
+
+cursor_x dq 0
+cursor_y dq 0
+
+pit_tick dq 0
+
+bg_buffer dq 0
+
+%include "drivers/bga/vga_font.asm"
+
+section .bss
+align 16
+idt_table: resb 256 * 16
+
+text_buffer resb 210 * 45
+
+
+section .text
+
+
+%macro ISR_ERR 2
+isr_%1:
+cli
+mov rdi, 0xb8000
+mov word [rdi], %2
+hlt
+jmp isr_%1
+%endmacro
+
+
+idt_init:
+push rax
+push rcx
+push rdi
+
+lea rdi, [idt_table]
+mov rcx, 512
+xor eax, eax
+rep stosq
+
+lea rax, [isr_DIV]
+mov rdi, 0
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_UD]
+mov rdi, 6
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_DF]
+mov rdi, 8
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_GPF]
+mov rdi, 13
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_PF]
+mov rdi, 14
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [irq_PIT]
+mov rdi, 32
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_YIELD]
+mov rdi, 0x80
+mov rsi, 0xEE
+call idt_set_entry
+
+lea rax, [isr_SYSCALL]
+mov rdi, 0x81
+mov rsi, 0xEE
+call idt_set_entry
+
+lea rax, [isr_255]
+mov rdi, 0xFF
+mov rsi, 0x8E
+call idt_set_entry
+
+lidt [idtr]
+
+pop rdi
+pop rcx
+pop rax
+ret
+
+;; rdi = vector num
+;; rax = handle addr
+;; rsi = attr
+idt_set_entry:
+push rbx
+lea rbx, [idt_table]
+shl rdi, 4
+add rbx, rdi
+
+mov [rbx], ax
+mov word [rbx + 2], 0x08
+mov byte [rbx + 4], 0
+mov byte [rbx + 5], sil
+shr rax, 16
+mov [rbx + 6], ax
+shr rax, 16
+mov [rbx + 8], eax
+mov dword [rbx + 12], 0
+pop rbx
+ret
+
+
+
+remap_pic:
+mov al, 0x11
+out 0x20, al
+out 0xeb, al
+out 0xa0, al
+out 0xeb, al
+
+
+mov al, 0x20
+out 0x21, al
+out 0xeb, al
+mov al, 0x28
+out 0xa1, al
+out 0xeb, al
+
+mov al, 0x04
+out 0x21, al
+out 0xeb, al
+mov al, 0x02
+out 0xa1, al
+out 0xeb, al
+
+mov al, 0x01
+out 0x21, al
+out 0xeb, al
+out 0xa1, al
+out 0xeb, al
+
+mov al, 0xfe
+out 0x21, al
+mov al, 0xff
+out 0xa1, al
+ret
+
+
+pit_init:
+mov al, 0x36
+out 0x43, al
+
+mov al, 0xa9
+out 0x40, al
+mov al, 0x04
+out 0x40, al
+
+ret
+
+;; rdi = irq num
+pic_eoi:
+push rax
+
+cmp rdi, 8
+jb .master
+
+mov al, 0x20
+out 0xa0, al
+
+.master:
+mov al, 0x20
+out 0x20, al
+
+pop rax
+ret
+
+disable_pic:
+mov al, 0xff
+out 0xa1, al
+out 0x21, al
+ret
+
+lapic_init:
+mov rdi, 0xFFFF8000FEE00000
+mov rsi, 0xFEE00000
+mov rdx, 3
+call mapPage
+
+mov rax, 0xFFFF8000FEE00000
+
+mov dword[rax + 0xF0], 0x1FF
+mov dword[rax + 0x80], 0
+mov dword [rax + 0x3E0], 0x03
+mov dword [rax + 0x320], 0x20020
+mov dword [rax + 0x380], 1000000
+ret
+
+lapic_eoi:
+mov rax, 0xFFFF8000FEE00000
+mov dword [rax + 0xB0], 0
+ret
+
+
+ioapic_init:
+mov rdi, 0xFFFF8000FEC00000
+mov rsi, 0xFEC00000
+mov rdx, 3
+call mapPage
+
+mov rax, 0xFFFF8000FEC00000
+
+xor ecx, ecx
+.mask_loop:
+mov edx, ecx
+shl edx, 1
+add edx, 0x10
+
+mov dword [rax], edx
+mov dword [rax + 0x10], 0x10000
+
+inc ecx
+cmp ecx, 24
+jl .mask_loop
+
+mov dword [rax], 0x12
+mov dword [rax + 0x10], 33
+mov dword [rax], 0x13
+mov dword[rax + 0x10], 0
+
+mov dword[rax], 0x28
+mov dword [rax + 0x10], 44
+mov dword [rax], 0x29
+mov dword [rax + 0x10], 0
+
+ret
+
+ISR_ERR DIV, 0x4f44
+ISR_ERR GPF, 0x4f47
+ISR_ERR PF, 0x4f50
+ISR_ERR DF, 0x4f46
+ISR_ERR UD, 0x4f55
+
+isr_255:
+iretq
+
+get_thread_by_tid:
+push rcx
+mov rax, [curr_thread]
+test rax, rax
+jz .tid_not_found
+mov rcx, rax
+.tid_loop:
+cmp [rax + 80], rdi
+je .tid_found
+mov rax, [rax + 8]
+cmp rax, rcx
+jne .tid_loop
+.tid_not_found:
+xor rax, rax
+.tid_found:
+pop rcx
+ret
+
+isr_SYSCALL:
+cmp rax, 1
+je exit_thread
+cmp rax, 2
+je .sys_write
+cmp rax, 3
+je .sys_mmap
+cmp rax, 4
+je .sys_unmap
+cmp rax, 5
+je .sys_get_driver
+cmp rax, 6
+je .sys_driver_invoke
+cmp rax, 7
+je .sys_load_driver
+cmp rax, 8
+je .sys_read_file
+cmp rax, 9
+je .sys_write_file
+cmp rax, 10
+je .sys_spawn
+cmp rax, 11
+je .sys_load_shlib
+cmp rax, 13
+je .sys_get_tid
+cmp rax, 14
+je .sys_send_msg
+cmp rax, 15
+je .sys_recv_msg
+
+cmp rax, 12
+je .sys_get_cursor
+iretq
+
+;; rax = 13
+.sys_get_tid:
+mov rax, [curr_thread]
+mov rax, [rax + 80]
+iretq
+
+;; rax = 14
+;; rdi = target tid
+;; rsi = msg buffer
+;; rdx = msg len
+.sys_send_msg:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call get_thread_by_tid
+test rax, rax
+jz .send_fail
+
+mov rbx, rax 
+
+mov rdi, rdx
+add rdi, 24
+push rdx
+push rsi
+call kmalloc
+pop rsi
+pop rdx
+
+mov qword [rax], 0 
+mov rcx, [curr_thread]
+mov rcx, [rcx + 80]
+mov [rax + 8], rcx 
+mov [rax + 16], rdx 
+
+push rax
+lea rdi, [rax + 24]
+mov rcx, rdx
+rep movsb
+pop rax
+
+cli
+mov rcx, [rbx + 96] 
+test rcx, rcx
+jnz .append_tail
+
+mov [rbx + 88], rax 
+mov [rbx + 96], rax 
+jmp .send_done
+
+.append_tail:
+mov [rcx], rax 
+mov [rbx + 96], rax 
+
+.send_done:
+sti
+mov rax, 0
+jmp .send_exit
+
+.send_fail:
+mov rax, -1
+
+.send_exit:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+
+
+;; rax = 15
+;; rdi = ptr to store tid
+;; rsi = dest buffer (0 for size only)
+;; rdx = bytes to read
+.sys_recv_msg:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+cli
+mov rbx, [curr_thread]
+mov r8, [rbx + 88] 
+test r8, r8
+jz .recv_empty
+
+test rsi, rsi
+jz .recv_size_only
+
+mov r9, [r8 + 16] 
+cmp rdx, r9
+jb .use_max
+mov rdx, r9
+.use_max:
+
+push rdi
+push rsi
+push rdx
+push r8
+
+mov rdi, rsi
+lea rsi, [r8 + 24]
+mov rcx, rdx
+rep movsb
+
+pop r8
+pop rdx
+pop rsi
+pop rdi
+
+test rdi, rdi
+jz .skip_tid
+mov rcx, [r8 + 8]
+mov [rdi], rcx
+.skip_tid:
+
+mov rcx, [r8] 
+mov [rbx + 88], rcx
+test rcx, rcx
+jnz .not_empty_tail
+mov qword [rbx + 96], 0
+.not_empty_tail:
+
+push rdx
+mov rdi, r8
+call kfree
+pop rdx
+
+mov rax, rdx
+sti
+jmp .recv_exit
+
+.recv_size_only:
+mov rax, [r8 + 16]
+sti
+jmp .recv_exit
+
+.recv_empty:
+sti
+mov rax, -1
+
+.recv_exit:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+
+
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;              SOON DECREPITATED                ;;
+;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+.sys_get_cursor:
+mov rax, [cursor_x]
+mov rdx, [cursor_y]
+iretq
+
+;; rax = 11
+;; rdi = filename
+.sys_load_shlib:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+
+call fat32_lock
+call fat32_load_file
+
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
+
+test rax, rax
+jz .load_shlib_fail
+
+mov r12, rax
+mov rdi, rax
+mov rsi, rdx
+call load_shared_library
+mov rbx, rax
+
+mov rdi, r12
+call kfree
+
+mov rax, rbx
+jmp .load_shlib_done
+
+.load_shlib_fail:
+xor rax, rax
+
+.load_shlib_done:
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 10
+;; rdi = filename
+;; rsi = argc
+;; rdx = argv
+.sys_spawn:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+push r14
+push r15
+
+mov r12, rsi
+mov r13, rdx
+
+xor r14, r14
+xor r15, r15
+test r12, r12
+jle .load_fat32
+
+xor rbx, rbx
+
+.calc_len:
+cmp rbx, r12
+jge .alloc_args
+mov rcx, [r13 + rbx*8]
+
+.strlen:
+cmp byte [rcx], 0
+je .str_done
+inc rcx
+inc r14
+jmp .strlen
+
+.str_done:
+inc r14
+inc rbx
+jmp .calc_len
+
+.alloc_args:
+mov rdi, r14
+call kmalloc
+mov r15, rax
+
+xor rbx, rbx
+mov rdi, r15
+.copy_strs:
+cmp rbx, r12
+jge .load_fat32
+mov rsi, [r13 + rbx*8]
+.str_cpy:
+mov al, [rsi]
+mov [rdi], al
+inc rsi
+inc rdi
+test al, al
+jnz .str_cpy
+inc rbx
+jmp .copy_strs
+
+.load_fat32:
+mov rdi, [rsp + 64]
+call fat32_lock
+call fat32_load_file
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
+test rax, rax
+jz .spawn_fail
+
+mov rdi, rax
+mov rsi, rdx
+mov rdx, r12
+mov rcx, r15
+mov r8, r14
+call load_userspace_process
+
+test r12, r12
+jle .spawn_ret_ok
+mov rdi, r15
+call kfree
+
+.spawn_ret_ok:
+mov rax, 0
+jmp .spawn_done
+
+.spawn_fail:
+mov rax, -1
+
+.spawn_done:
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 9
+;; rdi = filename
+;; rsi = buffer
+;; rdx = size
+.sys_write_file:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call fat32_lock
+call fat32_write_file
+
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 8
+;; rdi = filename
+;; rsi = buffer (0 to get size only)
+.sys_read_file:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call fat32_lock
+
+mov rbx, rsi
+call fat32_find_file
+test rax, rax
+jz .read_file_fail
+
+test rbx, rbx
+jz .read_file_size
+
+push rdx
+mov rdi, rax
+mov rsi, rbx
+call fat32_read_file
+pop rax
+jmp .read_file_done
+
+.read_file_size:
+mov rax, rdx
+jmp .read_file_done
+
+.read_file_fail:
+mov rax, -1
+
+.read_file_done:
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 5
+;; rdi = driver name
+.sys_get_driver:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call driver_find_by_name
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 6
+;; rdi = handle
+;; rsi = function
+;; rdx = in buffer
+;; r10 = out buffer
+.sys_driver_invoke:
+mov rcx, r10
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call driver_invoke
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 7
+;; rdi = filename
+.sys_load_driver:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+call fat32_lock
+
+call fat32_load_file
+
+push rax
+push rdx
+call fat32_unlock
+pop rdx
+pop rax
+
+test rax, rax
+jz .load_fail
+
+mov rdi, rax
+mov rsi, rdx
+call load_kernel_driver
+jmp .load_done
+
+.load_fail:
+xor rax, rax
+
+.load_done:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 2
+;; rdi = fd
+;; rsi = buffer pointer
+;; rdx = len
+.sys_write:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+
+cmp qword [bg_buffer], 0
+jne .skip_bg
+
+push rax
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+mov rdi, 1680 * 720 * 4
+call kmalloc
+mov [bg_buffer], rax
+
+mov rdi, rax
+mov rsi, 0xE0000000
+mov rcx, (1680 * 720 * 4) / 8
+rep movsq
+
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rax
+
+.skip_bg:
+mov rbx, rsi
+mov rcx, rdx
+
+.write_loop:
+test rcx, rcx
+jz .write_done
+
+movzx rax, byte [rbx]
+
+cmp al, 10
+je .newline
+
+cmp al, 8
+je .backspace
+
+call .draw_char
+
+push rax
+push r8
+push rdi
+mov rax, [cursor_y]
+shr rax, 4
+imul rax, 210
+mov r8, [cursor_x]
+shr r8, 3
+add rax, r8
+lea rdi, [text_buffer]
+mov r8b, byte [rbx]
+mov [rdi + rax], r8b
+pop rdi
+pop r8
+pop rax
+
+add qword [cursor_x], 8
+cmp qword [cursor_x], 1680
+jb .char_done
+
+.newline:
+mov qword [cursor_x], 0
+add qword[cursor_y], 16
+
+cmp qword [cursor_y], 720
+jb .char_done
+
+push rax
+push rcx
+push rdi
+push rsi
+
+mov rdi, text_buffer
+mov rsi, text_buffer + 210
+mov rcx, 210 * 44
+rep movsb
+
+mov rdi, text_buffer + 210 * 44
+mov rcx, 210
+xor al, al
+rep stosb
+
+mov rdi, 0xE0000000
+mov rsi, [bg_buffer]
+mov rcx, (1680 * 720 * 4) / 8
+rep movsq
+
+call .redraw_all_text
+
+pop rsi
+pop rdi
+pop rcx
+pop rax
+
+mov qword [cursor_y], 704
+jmp .char_done
+
+.backspace:
+cmp qword [cursor_x], 0
+je .bs_check_y
+sub qword [cursor_x], 8
+jmp .bs_clear
+
+.bs_check_y:
+cmp qword [cursor_y], 0
+je .char_done
+sub qword [cursor_y], 16
+mov qword[cursor_x], 1672
+
+.bs_clear:
+push rdi
+push rcx
+push rax
+push rsi
+push r8
+
+mov rax, [cursor_y]
+shr rax, 4
+imul rax, 210
+mov rdi, [cursor_x]
+shr rdi, 3
+add rax, rdi
+lea rdi, [text_buffer]
+mov byte [rdi + rax], 0
+
+mov rdi, [cursor_y]
+imul rdi, 1680
+add rdi, [cursor_x]
+shl rdi, 2
+
+mov rsi, [bg_buffer]
+add rsi, rdi
+mov rax, 0xE0000000
+add rdi, rax
+
+mov rcx, 16
+
+.clear_bs_loop:
+mov r8, [rsi]
+mov [rdi], r8
+mov r8, [rsi+8]
+mov [rdi+8], r8
+mov r8, [rsi+16]
+mov [rdi+16], r8
+mov r8, [rsi+24]
+mov [rdi+24], r8
+add rdi, 1680 * 4
+add rsi, 1680 * 4
+dec rcx
+jnz .clear_bs_loop
+
+pop r8
+pop rsi
+pop rax
+pop rcx
+pop rdi
+
+.char_done:
+inc rbx
+dec rcx
+jmp .write_loop
+
+.write_done:
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+.redraw_all_text:
+push rax
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+
+mov r8, [cursor_x]
+mov r9, [cursor_y]
+push r8
+push r9
+
+mov qword [cursor_y], 0
+lea r10, [text_buffer]
+
+.redraw_y_loop:
+cmp qword [cursor_y], 720
+jge .redraw_done
+
+mov qword [cursor_x], 0
+
+.redraw_x_loop:
+cmp qword [cursor_x], 1680
+jge .redraw_next_y
+
+movzx rax, byte [r10]
+inc r10
+
+test rax, rax
+jz .redraw_skip_char
+
+call .draw_char
+
+.redraw_skip_char:
+add qword [cursor_x], 8
+jmp .redraw_x_loop
+
+.redraw_next_y:
+add qword [cursor_y], 16
+jmp .redraw_y_loop
+
+.redraw_done:
+pop r9
+pop r8
+mov [cursor_y], r9
+mov [cursor_x], r8
+
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+pop rax
+ret
+
+;; rax = character to draw
+.draw_char:
+push rax
+push rbx
+push rcx
+push rdx
+push rdi
+push rsi
+push r8
+push r9
+
+shl rax, 4
+lea rsi, [vga_font + rax]
+
+mov rdi, [cursor_y]
+imul rdi, 1680
+add rdi, [cursor_x]
+shl rdi, 2
+mov r8, 0xE0000000
+add rdi, r8
+
+mov r8, 16
+
+.row_loop:
+mov dl, [rsi]
+mov r9, 8
+mov rcx, rdi
+
+.col_loop:
+shl dl, 1
+jnc .next_pixel
+
+
+.draw_fg:
+mov dword [rcx], 0xFFFFFFFF
+
+.next_pixel:
+add rcx, 4
+dec r9
+jnz .col_loop
+
+inc rsi
+add rdi, 1680 * 4
+dec r8
+jnz .row_loop
+
+pop r9
+pop r8
+pop rsi
+pop rdi
+pop rdx
+pop rcx
+pop rbx
+pop rax
+ret
+
+;; rax = 3
+;; rdi = virtual addr
+;; rsi = no of pages
+;; rdx = prot
+;; r10 = flags
+.sys_mmap:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+push r14
+push r15
+
+mov r12, rdi
+mov r13, rsi
+
+test r13, r13
+jz .mmap_err
+
+cmp r13, 0x7FFFFFFF
+ja .mmap_err
+
+test r10, 0x20
+jz .mmap_err
+
+mov r14, 5
+test rdx, 2
+jz .prot_parsed
+or r14, 2
+.prot_parsed:
+
+test r12, 0xFFF
+jnz .mmap_err
+
+test r10, 0x10
+jnz .check_bounds
+
+test r12, r12
+jz .search_vma2
+
+mov rbx, r12
+mov r15, r13
+.check_hint:
+mov rdi, rbx
+call is_page_mapped
+jnz .search_vma2
+add rbx, 4096
+dec r15
+jnz .check_hint
+jmp .check_bounds
+
+
+.search_vma2:
+mov r12, 0x700000000000
+.search_vma:
+mov rbx, r12
+mov r15, r13
+
+.check_vma_page:
+mov rdi, rbx
+call is_page_mapped
+test rax, rax
+jnz .vma_occupied
+add rbx, 4096
+dec r15
+jnz .check_vma_page
+jmp .check_bounds
+
+.vma_occupied:
+lea r12, [rbx + 4096]
+mov rax, 0x00007FFFF0000000
+cmp r12, rax
+jae .mmap_err
+jmp .search_vma
+
+.check_bounds:
+mov rax, r13
+shl rax, 12
+add rax, r12
+jc .mmap_err
+mov rbx, 0x00007FFFFFFFFFFF
+cmp rax, rbx
+ja .mmap_err
+
+mov rbx, r12
+mov r15, r13
+.unmap_existing:
+mov rdi, rbx
+call is_page_mapped
+test rax, rax
+jz .skip_unmap
+mov rdi, rbx
+call unmapPage
+
+.skip_unmap:
+add rbx, 4096
+dec r15
+jnz .unmap_existing
+
+mov rbx, r12
+mov r15, r13
+
+mov r8, [curr_thread]
+lea r9, [r8 + 64]
+
+.clean_vmas:
+mov r10, [r9]
+test r10, r10
+jz .clean_vmasok
+
+mov rcx, [r10]
+cmp rcx, r12
+jb .keep_vma
+
+mov rax, [r10 + 8]
+shl rax, 12
+add rax, rcx
+
+mov rdi, r13
+shl rdi, 12
+add rdi, r12
+
+cmp rax, rdi
+ja .keep_vma
+
+mov rcx, [r10 + 16]
+mov [r9], rcx
+
+push r9
+mov rdi, r10
+call kfree
+pop r9
+jmp .clean_vmas
+
+.keep_vma:
+lea r9, [r10 + 16]
+jmp .clean_vmas
+
+.clean_vmasok:
+mov rbx, r12
+mov r15, r13
+
+.mmap_loop:
+test r15, r15
+jz .mmap_done
+
+call alloc_page
+test rax, rax
+jz .mmap_rollback
+
+push rax
+
+mov rdi, rbx
+mov rsi, rax
+mov rdx, r14
+or rdx, 2
+call mapPage
+
+mov rdi, rbx
+mov rcx, 512
+xor eax, eax
+rep stosq
+
+pop rax
+
+test r14, 2
+jnz .next_page
+mov rdi, rbx
+mov rsi, rax
+mov rdx, r14
+call mapPage
+
+.next_page:
+add rbx, 4096
+dec r15
+jmp .mmap_loop
+
+.mmap_rollback:
+mov r15, rbx
+mov rbx, r12
+
+.rollback_loop:
+cmp rbx, r15
+jae .mmap_err
+mov rdi, rbx
+call unmapPage
+add rbx, 4096
+jmp .rollback_loop
+
+.mmap_done:
+mov rax, r12
+
+push rax
+mov rdi, 24
+call kmalloc
+mov rbx, rax
+pop rax
+
+mov [rbx], rax
+mov [rbx + 8], r13
+
+mov r8, [curr_thread]
+mov r9, [r8 + 64]
+mov [rbx + 16], r9
+mov [r8 + 64], rbx
+
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+.mmap_err:
+mov rax, -1
+pop r15
+pop r14
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+iretq
+
+;; rax = 4
+;; rdi = virtual addr
+;; rsi = no of pages
+.sys_unmap:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+push r12
+push r13
+
+test rdi, 0xFFF
+jnz .unmap_err
+
+cmp rsi, 0x7FFFFFFF
+ja .unmap_err
+
+mov rax, rsi
+shl rax, 12
+add rax, rdi
+jc .unmap_err
+mov rbx, 0x00007FFFFFFFFFFF
+cmp rax, rbx
+ja .unmap_err
+
+mov r12, rdi
+mov r13, rsi
+
+.unmap_loop:
+test r13, r13
+jz .unmap_done
+
+mov rdi, r12
+call unmapPage
+
+add r12, 4096
+dec r13
+jmp .unmap_loop
+
+.unmap_done:
+mov r8, [curr_thread]
+lea r9, [r8 + 64]
+
+mov r10, [rsp + 48]
+mov r11, [rsp + 56]
+
+.find_vma:
+mov rbx, [r9]
+test rbx, rbx
+jz .finish_unmap
+
+cmp [rbx], r10
+jne .next_vma
+cmp[rbx + 8], r11
+jne .next_vma
+
+mov rcx, [rbx + 16]
+mov [r9], rcx
+
+mov rdi, rbx
+call kfree
+jmp .finish_unmap
+
+.next_vma:
+lea r9, [rbx + 16]
+jmp .find_vma
+
+.finish_unmap:
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+mov rax, 0
+iretq
+
+
+.unmap_err:
+pop r13
+pop r12
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
+mov rax, -1
+iretq
+
+irq_PIT:
+push r15
+push r14
+push r13
+push r12
+push r11
+push r10
+push r9
+push r8
+push rdi
+push rsi
+push rbp
+push rbx
+push rdx
+push rcx
+push rax
+
+inc qword [pit_tick]
+
+call lapic_eoi
+
+mov rdi, rsp
+call schedule
+mov rsp, rax
+
+pop rax
+pop rcx
+pop rdx
+pop rbx
+pop rbp
+pop rsi
+pop rdi
+pop r8
+pop r9
+pop r10
+pop r11
+pop r12
+pop r13
+pop r14
+pop r15
+iretq
+
+isr_YIELD:
+push r15
+push r14
+push r13
+push r12
+push r11
+push r10
+push r9
+push r8
+push rdi
+push rsi
+push rbp
+push rbx
+push rdx
+push rcx
+push rax
+
+mov rdi, rsp
+call yield_sch
+mov rsp, rax
+
+pop rax
+pop rcx
+pop rdx
+pop rbx
+pop rbp
+pop rsi
+pop rdi
+pop r8
+pop r9
+pop r10
+pop r11
+pop r12
+pop r13
+pop r14
+pop r15
+iretq
