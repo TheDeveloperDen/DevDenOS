@@ -28,9 +28,17 @@ dq prog_end - header ; size in file
 
 align 16
 _start:
+mov rax, 5 ; Get Driver
+lea rdi, [gpu_name]
+int 0x81 ; Syscall
+mov [handle], rax
 
-mov rdi, gpu_name
-call serial_print
+mov rax, 6 ; Invoke driver
+mov rdi, [handle]
+mov rsi, 1
+xor rdx, rdx
+xor r10, r10
+int 0x81 ; Syscall
 
 jmp $
 
