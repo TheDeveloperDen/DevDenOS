@@ -392,9 +392,9 @@ mov rdi, 1
 lea rsi, [char_buf]
 mov rdx, 1
 int 0x81
-    
+
 call process_command
-    
+
 mov qword [cmd_len], 0
 call print_prompt
 jmp .input_loop
