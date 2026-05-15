@@ -405,7 +405,7 @@ mov qword [rax], 0x33 ; user DS
 sub rax, 8
 mov[rax], r13 ; User SP
 sub rax, 8
-mov qword [rax], 0x202 ; RFLAGS
+mov qword [rax], 0x3202 ; RFLAGS
 sub rax, 8
 mov qword [rax], 0x3B ; User CS
 sub rax, 8

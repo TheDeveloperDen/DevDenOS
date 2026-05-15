@@ -216,7 +216,7 @@ hlt
 jmp .idle
 
 
-user_program: db "den/bin/denshell.dde",0
+user_program: db "den/bin/test.dde",0
 disp_cfg: db "den/disp.cfg", 0
 default_gpu: db "den/drivers/bga.dde", 0
 
