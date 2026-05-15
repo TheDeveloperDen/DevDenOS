@@ -28,8 +28,8 @@ dq prog_end - header
 
 align 16
 _start:
-mov rax, 7
-lea rdi, [bga_file]
+mov rax, 5
+lea rdi, [gpu_name]
 int 0x81
 mov [handle], rax
 
@@ -112,7 +112,7 @@ add rsp, 2
 mov rax, 1
 int 0x81
 
-bga_file: db "den/drivers/bga.dde", 0
+gpu_name: db "gpu", 0
 glrbm: db "den/libs/glrbm.dde", 0
 
 handle: dq 1

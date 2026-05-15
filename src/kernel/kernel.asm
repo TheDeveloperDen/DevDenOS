@@ -143,7 +143,56 @@ call fat32_init
 call drivers_init
 call scheduler_init
 
+mov rdi, disp_cfg
+call fat32_load_file
+test rax, rax
+jz .default_gpu
 
+mov r12, rax
+lea rbx, [rax + rdx - 1]
+
+.strip_cfg:
+cmp rbx, r12
+jl .do_load_gpu
+
+cmp byte [rbx], ' '
+ja .do_load_gpu
+
+mov byte [rbx], 0
+dec rbx
+jmp .strip_cfg
+
+.do_load_gpu:
+mov rdi, r12
+call fat32_load_file
+push rax
+push rdx
+mov rdi, r12
+call kfree
+pop rdx
+pop rax
+test rax, rax
+jz .invalid_gpu
+jmp .init_gpu
+
+.invalid_gpu:
+mov rdi, invalid_vid
+call serial_print
+jmp .skip_gpu
+
+
+.default_gpu:
+mov rdi, default_gpu
+call fat32_load_file
+test rax, rax
+jz .skip_gpu
+
+.init_gpu:
+mov rdi, rax
+mov rsi, rdx
+call load_kernel_driver
+
+.skip_gpu:
 
 mov rdi, user_program
 call fat32_load_file
@@ -168,7 +217,10 @@ jmp .idle
 
 
 user_program: db "den/bin/denshell.dde",0
+disp_cfg: db "den/disp.cfg", 0
+default_gpu: db "den/drivers/bga.dde", 0
 
+invalid_vid: db "invalid video driver", 10, 0
 
 %include "kernel/paging.asm"
 %include "kernel/heap.asm"

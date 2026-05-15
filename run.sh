@@ -72,6 +72,9 @@ mcopy -i out/devdenOS.img img/cursors/cursor.tga ::/den/cursors/cursor.tga
 mcopy -i out/devdenOS.img img/cursors/icursor.tga ::/den/cursors/icursor.tga
 mcopy -i out/devdenOS.img img/manul.tga ::/den/manul.tga
 
+# configs cpy
+mcopy -i out/devdenOS.img disp.cfg ::/den/disp.cfg
+
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 count=3 conv=notrunc
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 skip=93 seek=93 count=417 conv=notrunc
 

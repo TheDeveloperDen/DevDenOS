@@ -37,8 +37,8 @@ _start:
 mov [argc], rdi
 mov [argv], rsi
 
-mov rax, 7 ; Load driver
-lea rdi, [bga_file]
+mov rax, 5 ; Get Driver
+lea rdi, [gpu_name]
 int 0x81 ; Syscall
 mov [handle], rax
 
@@ -76,7 +76,7 @@ int 0x81 ; Syscall
 manul_str: db "MANUL",0Ah
 manul_str_len equ $ - manul_str
 
-bga_file: db "den/drivers/bga.dde",0
+gpu_name: db "gpu", 0
 handle: dq 1
 argc: dq 0
 argv: dq 0

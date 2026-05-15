@@ -31,8 +31,8 @@ _start:
 mov [argc], rdi
 mov [argv], rsi
 
-mov rax, 7
-lea rdi, [bga_file]
+mov rax, 5
+lea rdi, [gpu_name]
 int 0x81
 mov [handle], rax
 
@@ -137,7 +137,7 @@ printf: jmp [ptr_printf]
 msg: db "Loaded from userspace",10
 msg_len equ $ - msg
 
-bga_file: db "den/drivers/bga.dde",0
+gpu_name: db "gpu", 0
 
 file: db "den/verlongfilenamesss1234.txt",0
 

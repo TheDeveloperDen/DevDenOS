@@ -28,8 +28,8 @@ dq prog_end - header ; size in file
 
 align 16
 _start:
-mov rax, 7
-lea rdi, [drv_file]
+mov rax, 5
+lea rdi, [gpu_name]
 int 0x81
 
 test rax, rax
@@ -774,7 +774,7 @@ jmp .find_null
 
 %include "tga.asm"
 
-drv_file: db "den/drivers/bga.dde", 0
+gpu_name: db "gpu", 0
 kbd_file: db "den/drivers/ps2.dde", 0
 cursor_file: db "den/cursors/cursor.tga", 0
 
