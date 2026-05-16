@@ -122,7 +122,7 @@ test al, al
 jz .print_percent
 
 inc r12
-    
+
 cmp al, 's'
 je .print_string
 cmp al, 'd'
