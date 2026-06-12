@@ -102,6 +102,37 @@ lea r14, [rbx + 4096]
 jmp .search_vma
 
 .vma_found:
+push rdi
+push rsi
+push rax
+
+mov edi, dword [r12 + 0x26]
+lea rdi, [r12 + rdi + 16]
+call serial_print
+
+mov al, '.'
+call serial_putchar
+mov al, 'd'
+call serial_putchar
+mov al, 'd'
+call serial_putchar
+mov al, 'e'
+call serial_putchar
+mov al, ':'
+call serial_putchar
+mov al, ' '
+call serial_putchar
+
+mov rdi, r14
+call serial_print_hex
+
+mov al, 10
+call serial_putchar
+
+pop rax
+pop rsi
+pop rdi
+
 mov rbx, r14
 mov r15, r13
 .map_loop:

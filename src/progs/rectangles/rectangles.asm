@@ -1,7 +1,12 @@
 [bits 64]
 default rel
 
+section .text
+
+%ifidn __OUTPUT_FORMAT__, bin
 org 0x4000000
+%endif
+
 
 header:
 db 'D','V','D','N'
@@ -25,6 +30,8 @@ dq 0x4000000
 dq prog_end - header
 dq 0
 dq prog_end - header
+
+%include "globals.asm"
 
 align 16
 _start:

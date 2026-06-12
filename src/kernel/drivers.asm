@@ -154,6 +154,34 @@ xor al, al
 rep stosb
 
 .name_done:
+push rax
+push rdi
+
+lea rdi, [r15 + 24]
+call serial_print
+
+mov al, '.'
+call serial_putchar
+mov al, 'd'
+call serial_putchar
+mov al, 'd'
+call serial_putchar
+mov al, 'e'
+call serial_putchar
+mov al, ':'
+call serial_putchar
+mov al, ' '
+call serial_putchar
+
+mov rdi, r14
+call serial_print_hex
+
+mov al, 10
+call serial_putchar
+
+pop rdi
+pop rax
+
 mov rax, [r12 + 0x08]
 mov r8, r14
 sub r8, [r12 + 0x10]

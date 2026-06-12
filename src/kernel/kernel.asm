@@ -1,6 +1,11 @@
+%ifidn __OUTPUT_FORMAT__, bin
 org 0x100000
+%endif
+
+section .text
 [bits 32]
 
+%include "kernel/globals.asm"
 
 entry:
 

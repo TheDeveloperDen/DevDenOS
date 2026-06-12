@@ -1,6 +1,8 @@
 [bits 64]
 default rel
 
+section .text
+
 header:
 db 'D','V','D','N'
 db 1, 0
@@ -29,6 +31,8 @@ dq 0
 dq drv_end - header
 dq 0
 dq drv_end - header
+
+%include "globals.asm"
 
 align 16
 _start:
