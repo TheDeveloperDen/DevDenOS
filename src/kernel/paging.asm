@@ -478,3 +478,312 @@ pop rcx
 pop rax
 popfq
 ret
+
+
+; rdi = page count
+; rax = virt addr
+alloc_contiguous
+pushfq
+cli
+push rbx
+push r12
+push r13
+push r14
+push r15
+
+mov r12, rdi
+test r12, r12
+jz .fail
+
+mov rcx, r12
+call find_free_virt_range
+test rbx, rbx
+jz .fail
+mov r13, rbx
+
+cmp qword [freed_count], r12
+jb .use_e820
+
+mov rcx, r12
+call find_phys_bitmap_opt
+test rax, rax
+jnz .got_phys
+
+.use_e820:
+mov rcx, r12
+call alloc_phys_e820
+test rax, rax
+jz .fail
+
+.got_phys:
+mov r14, rax
+xor r15, r15
+
+.map_loop:
+cmp r15, r12
+jae .map_done
+
+mov rdi, r13
+mov rax, r15
+shl rax, 12
+add rdi, rax
+
+mov rsi, r14
+add rsi, rax
+
+mov rdx, 3
+call mapPage
+
+inc r15
+jmp .map_loop
+
+.map_done:
+mov rax, r13
+mov rdx, r14
+jmp .exit
+
+.fail:
+xor rax, rax
+xor rdx, rdx
+
+.exit:
+pop r15
+pop r14
+pop r13
+pop r12
+pop rbx
+popfq
+ret
+
+; rdi = virt start addr
+; rsi = page count
+free_contiguous:
+pushfq
+cli
+push rbx
+push r12
+push r13
+
+mov r12, rdi
+mov r13, rsi
+
+test r12, r12
+jz .done
+test r13, r13
+jz .done
+
+xor rbx, rbx
+
+.unmap_loop:
+cmp rbx, r13
+jae .done
+
+mov rdi, r12
+mov rax, rbx
+shl rax, 12
+add rdi, rax
+
+call unmapPage
+
+inc rbx
+jmp .unmap_loop
+
+.done:
+pop r13
+pop r12
+pop rbx
+popfq
+ret
+
+; rcx = page count
+; rbx = virt addr of start (0 if fail)
+find_free_virt_range:
+push rdi
+push rsi
+push r8
+push r9
+push r11
+
+mov rbx, 0xFFFF980000000000
+
+.search:
+mov r8, rbx
+mov r9, rcx
+
+.check_loop:
+mov rdi, r8
+call is_page_mapped
+test rax, rax
+jnz .occupied
+add r8, 4096
+dec r9
+jnz .check_loop
+jmp .done
+
+.occupied:
+add r8, 4096
+mov rbx, r8
+mov r11, 0xFFFF9F0000000000
+cmp rbx, r11
+jb .search
+xor rbx, rbx
+
+.done:
+pop r11
+pop r9
+pop r8
+pop rsi
+pop rdi
+ret
+
+; rcx = page count
+; rax = phys addr
+find_phys_bitmap_opt:
+push rbx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+lea rsi, [page_bitmap]
+xor rdx, rdx
+xor r8, r8
+
+.loop:
+cmp rdx, 16777216
+jae .not_found
+
+test rdx, 63
+jnz .bit_check
+test r8, r8
+jnz .bit_check
+
+mov r9, rdx
+shr r9, 3
+mov rax, [rsi + r9]
+test rax, rax
+jnz .bit_check
+
+add rdx, 64
+jmp .loop
+
+.bit_check:
+bt [rsi], rdx
+jnc .reset_run
+
+inc r8
+cmp r8, rcx
+je .found
+inc rdx
+jmp .loop
+
+.reset_run:
+xor r8, r8
+inc rdx
+jmp .loop
+
+.found:
+mov rax, rdx
+sub rax, rcx
+inc rax
+
+mov r8, rax
+mov r9, rcx
+
+.clear_loop:
+btr [rsi], r8
+dec qword [freed_count]
+inc r8
+dec r9
+jnz .clear_loop
+
+shl rax, 12
+jmp .done
+
+.not_found:
+xor rax, rax
+
+.done:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rbx
+ret
+
+; rcx = page count
+; rax = phys addr of the block (0 if oom)
+alloc_phys_e820:
+push rbx
+push rsi
+push rdi
+push r8
+push r9
+push r11
+
+mov r11, rcx
+shl r11, 12
+
+.find_page:
+movzx rbx, word [e820_idx]
+mov rdi, 0x6FF8
+movzx rcx, word [rdi]
+cmp rbx, rcx
+jae .oom
+
+imul rsi, rbx, 24
+add rsi, 0x7000
+
+cmp dword [rsi + 16], 1
+jne .next_entry
+
+mov rax, [rsi]
+mov rdx, [rsi + 8]
+add rdx, rax
+
+mov rcx, [nextPage]
+test rcx, rcx
+jnz .chk_overlap
+mov rcx, rax
+
+.chk_overlap:
+mov r8, kernel_end
+add r8, 0xFFF
+and r8, ~0xFFF
+cmp rcx, r8
+jae .align_page
+mov rcx, r8
+
+.align_page:
+add rcx, 0xFFF
+and rcx, ~0xFFF
+
+mov r9, rcx
+add r9, r11
+cmp r9, rdx
+ja .next_entry
+
+mov [nextPage], r9
+mov rax, rcx
+jmp .done
+
+.next_entry:
+inc word [e820_idx]
+mov qword [nextPage], 0
+jmp .find_page
+
+.oom:
+xor rax, rax
+
+.done:
+pop r11
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rbx
+ret

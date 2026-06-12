@@ -16,6 +16,8 @@ dq free_page
 dq pci_read_dword
 dq pci_write_dword
 dq pci_find_device
+dq alloc_contiguous
+dq free_contiguous
 
 section .text
 
