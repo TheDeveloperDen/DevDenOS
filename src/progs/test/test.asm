@@ -1,7 +1,9 @@
 [bits 64]
 default rel
 
+%ifidn __OUTPUT_FORMAT__, bin
 org 0x4000000
+%endif
 
 header:
 db 'D','V','D','N'
