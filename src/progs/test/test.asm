@@ -5,6 +5,8 @@ default rel
 org 0x4000000
 %endif
 
+section .text
+
 header:
 db 'D','V','D','N'
 db 1
@@ -27,6 +29,8 @@ dq 0x4000000 ; virtual addr
 dq prog_end - header ; size in mem
 dq 0 ; offset
 dq prog_end - header ; size in file
+
+%include "globals.asm"
 
 align 16
 _start:
