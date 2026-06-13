@@ -40,6 +40,22 @@ mov [api_table], rdi
 lea rax, [dispatch]
 ret
 
+; rdi = page count
+; rax = virt addr
+; rdx = phys addr
+alloc_driver_contiguous:
+mov rax, [api_table]
+call [rax + 72]
+ret
+
+; rdi = virt addr
+; rsi = page count
+free_driver_contiguous:
+mov rax, [api_table]
+call [rax + 80]
+ret
+
+
 dispatch:
 push rbp
 mov rbp, rsp
@@ -112,6 +128,7 @@ add eax, 8
 mov rcx, rax
 call read_pci_reg
 mov [common_offset], eax
+jmp .next_cap
 
 .found_notify:
 mov eax, [cap_ptr]
@@ -271,29 +288,45 @@ jz .fail_features
 
 mov word [rbx + 0x16], 0 
 mov ax, word [rbx + 0x18] 
-cmp ax, 256
-jbe .size0_ok
-mov ax, 256
-mov word [rbx + 0x18], ax
-
-.size0_ok:
 test ax, ax
 jz .fail_queues
 
+movzx r15, ax
 movzx eax, word [rbx + 0x1E]
 mov [control_notify_off], rax
 
-call alloc_queue_page
+mov rdi, r15
+shl rdi, 4
+add rdi, 4095
+shr rdi, 12
+mov [control_desc_pages], rdi
+call alloc_queue_contiguous
+test rax, rax
+jz .fail_queues
 mov [control_desc_phys], rax
 mov [control_desc_virt], rdx
 mov [rbx + 0x20], rax
 
-call alloc_queue_page
+mov rdi, r15
+shl rdi, 1
+add rdi, 4101
+shr rdi, 12
+mov [control_avail_pages], rdi
+call alloc_queue_contiguous
+test rax, rax
+jz .fail_queues
 mov [control_avail_phys], rax
 mov [control_avail_virt], rdx
 mov [rbx + 0x28], rax
 
-call alloc_queue_page
+mov rdi, r15
+shl rdi, 3
+add rdi, 4101
+shr rdi, 12
+mov [control_used_pages], rdi
+call alloc_queue_contiguous
+test rax, rax
+jz .fail_queues
 mov [control_used_phys], rax
 mov [control_used_virt], rdx
 mov [rbx + 0x30], rax
@@ -302,28 +335,46 @@ mov word [rbx + 0x1C], 1
 
 mov word [rbx + 0x16], 1 
 mov ax, word [rbx + 0x18]
-cmp ax, 256
-jbe .size1_ok
-mov ax, 256
-mov word [rbx + 0x18], ax
-.size1_ok:
 test ax, ax
 jz .fail_queues
 
+movzx r15, ax
+mov [control_queue_size], ax
 movzx eax, word [rbx + 0x1E]
 mov [cursor_notify_off], rax
 
-call alloc_queue_page
+mov rdi, r15
+shl rdi, 4
+add rdi, 4095
+shr rdi, 12
+mov [cursor_desc_pages], rdi
+call alloc_queue_contiguous
+test rax, rax
+jz .fail_queues
 mov [cursor_desc_phys], rax
 mov [cursor_desc_virt], rdx
 mov [rbx + 0x20], rax
 
-call alloc_queue_page
+mov rdi, r15
+shl rdi, 1
+add rdi, 4101
+shr rdi, 12
+mov [cursor_avail_pages], rdi
+call alloc_queue_contiguous
+test rax, rax
+jz .fail_queues
 mov [cursor_avail_phys], rax
 mov [cursor_avail_virt], rdx
 mov [rbx + 0x28], rax
 
-call alloc_queue_page
+mov rdi, r15
+shl rdi, 3
+add rdi, 4101
+shr rdi, 12
+mov [cursor_used_pages], rdi
+call alloc_queue_contiguous
+test rax, rax
+jz .fail_queues
 mov [cursor_used_phys], rax
 mov [cursor_used_virt], rdx
 mov [rbx + 0x30], rax
@@ -340,6 +391,114 @@ jz .fail_host
 
 lea rdi, [msg_gpu_ready]
 call serial_print
+
+mov rdi, 1
+call alloc_driver_contiguous
+test rax, rax
+jz .test_failed
+
+mov [test_buf_virt], rax
+mov [test_buf_phys], rdx
+
+mov rdi, [test_buf_virt]
+xor rcx, rcx
+mov [rdi], rcx
+mov [rdi + 8], rcx
+mov [rdi + 16], rcx
+mov dword [rdi], 0x0100
+
+mov rsi, [control_avail_virt]
+movzx rcx, word [rsi + 2]
+
+movzx rax, word [control_queue_size]
+dec rax
+mov r8, rcx
+shl r8, 1
+and r8, rax
+
+mov rsi, [control_desc_virt]
+mov r9, r8
+shl r9, 4
+add rsi, r9
+
+mov rax, [test_buf_phys]
+mov [rsi], rax
+mov dword [rsi + 8], 24
+mov word [rsi + 12], 1
+lea r10, [r8 + 1]
+mov word [rsi + 14], r10w
+
+mov rax, [test_buf_phys]
+add rax, 64
+mov [rsi + 16], rax
+mov dword [rsi + 24], 408
+mov word [rsi + 28], 2
+mov word [rsi + 30], 0
+
+mov rsi, [control_avail_virt]
+mov rdx, rcx
+and rdx, rax
+mov word [rsi + 4 + rdx * 2], r8w
+
+inc rcx
+mfence
+mov [rsi + 2], cx
+mfence
+
+mov rdi, [notify_mapped_addr]
+test rdi, rdi
+jz .test_failed
+
+mov rax, [control_notify_off]
+mov edx, dword [notify_multiplier]
+imul rax, rdx
+add rdi, rax
+mov word [rdi], 0
+
+mov rsi, [control_used_virt]
+.test_wait:
+mov ax, [rsi + 2]
+cmp ax, cx
+jne .test_wait
+
+mov rdi, [test_buf_virt]
+add rdi, 64
+mov eax, [rdi]
+cmp eax, 0x1101
+jne .test_failed
+
+lea rdi, [msg_display_info]
+call serial_print
+
+mov rdi, [test_buf_virt]
+add rdi, 64
+movzx rdi, dword [rdi + 32]
+call serial_print_hex
+
+lea rdi, [msg_display_x]
+call serial_print
+
+mov rdi, [test_buf_virt]
+add rdi, 64
+movzx rdi, dword [rdi + 36]
+call serial_print_hex
+
+lea rdi, [msg_newline]
+call serial_print
+jmp .test_cleanup
+
+.test_failed:
+lea rdi, [msg_test_fail]
+call serial_print
+
+.test_cleanup:
+mov rdi, [test_buf_virt]
+test rdi, rdi
+jz .test_done
+mov rsi, 1
+call free_driver_contiguous
+
+.test_done:
 mov rax, 1
 jmp .done
 
@@ -376,31 +535,33 @@ pop rbx
 pop rbp
 ret
 
-alloc_queue_page:
+alloc_queue_contiguous:
 push rbx
 push rcx
 push rdi
 push rsi
 
+push rdi
 mov rax, [api_table]
-call [rax + 32]
+call [rax + 72]
+pop rdi
+
+test rax, rax
+jz .alloc_fail
+
 mov rbx, rax
+mov rsi, rdx
 
-mov rdi, [next_virt_queue_addr]
-mov rsi, rax
-mov rdx, 3
-mov rax, [api_table]
-call [rax + 16]
-
-mov rdi, [next_virt_queue_addr]
-mov rcx, 512
+mov rcx, rdi
+shl rcx, 9
+mov rdi, rbx
 xor rax, rax
 rep stosq
 
-mov rax, rbx
-mov rdx, [next_virt_queue_addr]
-add qword [next_virt_queue_addr], 4096
+mov rax, rsi
+mov rdx, rbx
 
+.alloc_fail:
 pop rsi
 pop rdi
 pop rcx
@@ -459,6 +620,11 @@ msg_fail_feat: db "FEATURES_OK failed!", 10, 0
 msg_fail_queues: db "Queue setup failed!", 10, 0
 msg_fail_host: db "Host rejected init", 10, 0
 
+msg_display_info: db "Display 0 Resolution: ", 0
+msg_display_x: db "x", 0
+msg_newline: db 10, 0
+msg_test_fail: db "Display info query failed!", 10, 0
+
 dev_bdf dq 0
 cap_ptr dq 0
 cap_val0 dq 0
@@ -478,6 +644,18 @@ control_avail_phys dq 0
 control_avail_virt dq 0
 control_used_phys dq 0
 control_used_virt dq 0
+
+control_desc_pages dq 0
+control_avail_pages dq 0
+control_used_pages dq 0
+
+control_queue_size dw 0
+test_buf_virt dq 0
+test_buf_phys dq 0
+
+cursor_desc_pages dq 0
+cursor_avail_pages dq 0
+cursor_used_pages dq 0
 
 cursor_desc_phys dq 0
 cursor_desc_virt dq 0

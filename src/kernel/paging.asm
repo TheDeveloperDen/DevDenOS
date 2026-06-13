@@ -482,7 +482,7 @@ ret
 
 ; rdi = page count
 ; rax = virt addr
-alloc_contiguous
+alloc_contiguous:
 pushfq
 cli
 push rbx
