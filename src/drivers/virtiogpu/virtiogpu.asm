@@ -67,7 +67,338 @@ push r15
 
 cmp rdi, 1
 je .do_init
+cmp rdi, 2
+je .do_init_3d
+cmp rdi, 3
+je .do_clear_screen
 
+mov rax, -1
+jmp .done
+
+.do_init_3d:
+mov rdi, 1
+call alloc_driver_contiguous
+test rax, rax
+jz .err_out
+mov r12, rax
+mov r13, rdx
+
+mov rdi, r12
+mov rcx, 512
+xor eax, eax
+rep stosq
+
+; CTX_CREATE
+mov dword [r12], 0x0200
+mov dword [r12 + 16], 1
+mov dword [r12 + 24], 7
+mov dword [r12 + 32], 0x534f794d ; "DvDn"
+mov dword [r12 + 36], 0x0044332d ; "-3D\0"
+
+mov rdi, r13
+mov rsi, 96
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+; RESOURCE_CREATE_3D
+mov rdi, r12
+mov rcx, 32
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0204
+mov dword [r12 + 24], 1 ; Color Texture ID
+mov dword [r12 + 28], 2 ; VIRGL_TARGET_TEXTURE_2D
+mov dword [r12 + 32], 1 ; VIRGL_FORMAT_B8G8R8A8_UNORM
+mov dword [r12 + 36], 0x40002 ; BIND_RENDER_TARGET | BIND_SCANOUT
+mov rax, [screen_width]
+mov dword [r12 + 40], eax
+mov rax, [screen_height]
+mov dword [r12 + 44], eax
+mov dword [r12 + 48], 1
+mov dword [r12 + 52], 1
+
+mov rdi, r13
+mov rsi, 72
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+; ATTACH_RESOURCE
+mov rdi, r12
+mov rcx, 16
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0202
+mov dword [r12 + 16], 1
+mov dword [r12 + 24], 1
+
+mov rdi, r13
+mov rsi, 32
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+mov rax, [screen_width]
+imul rax, [screen_height]
+shl rax, 2 ; screen_width * screen_height * 4 bytes
+mov [fb_backing_size], rax
+add rax, 4095
+shr rax, 12
+mov rdi, rax
+call alloc_driver_contiguous
+test rax, rax
+jz .failed_3d
+mov [fb_backing_virt], rax
+mov [fb_backing_phys], rdx
+
+; VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING
+mov rdi, r12
+mov rcx, 16
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0106
+mov dword [r12 + 24], 1 ; Color Buffer
+mov dword [r12 + 28], 1 ; nr_entries
+mov rax, [fb_backing_phys]
+mov [r12 + 32], rax
+mov rax, [fb_backing_size]
+mov dword [r12 + 40], eax
+mov dword [r12 + 44], 0
+
+mov rdi, r13
+mov rsi, 48
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+; RESOURCE_CREATE_3D
+mov rdi, r12
+mov rcx, 32
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0204
+mov dword [r12 + 24], 2 ; Depth Texture ID
+mov dword [r12 + 28], 2 ; VIRGL_TARGET_TEXTURE_2D
+mov dword [r12 + 32], 16 ; VIRGL_FORMAT_Z16_UNORM
+mov dword [r12 + 36], 1 ; VIRGL_BIND_DEPTH_STENCIL
+mov rax, [screen_width]
+mov dword [r12 + 40], eax
+mov rax, [screen_height]
+mov dword [r12 + 44], eax
+mov dword [r12 + 48], 1
+mov dword [r12 + 52], 1
+
+mov rdi, r13
+mov rsi, 72
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+; ATTACH_RESOURCE
+mov rdi, r12
+mov rcx, 16
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0202
+mov dword [r12 + 16], 1
+mov dword [r12 + 24], 2
+
+mov rdi, r13
+mov rsi, 32
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+; SET_SCANOUT
+mov rdi, r12
+mov rcx, 16
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0103
+mov dword [r12 + 24], 0
+mov dword [r12 + 28], 0
+mov rax, [screen_width]
+mov dword [r12 + 32], eax
+mov rax, [screen_height]
+mov dword [r12 + 36], eax
+mov dword [r12 + 40], 0
+mov dword [r12 + 44], 1
+
+mov rdi, r13
+mov rsi, 48
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+; SUBMIT_3D
+mov rdi, r12
+mov rcx, 128
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0207
+mov dword [r12 + 16], 1
+mov dword [r12 + 24], 48
+
+; Color Surface
+mov dword [r12 + 32], 0x50801 ; VIRGL_CCMD_CREATE_OBJECT
+mov dword [r12 + 36], 7
+mov dword [r12 + 40], 1 ; Color Texture ID
+mov dword [r12 + 44], 1 ; B8G8R8A8_UNORM format
+mov dword [r12 + 48], 0
+mov dword [r12 + 52], 0
+
+; Depth Surface
+mov dword [r12 + 56], 0x50801 ; VIRGL_CCMD_CREATE_OBJECT
+mov dword [r12 + 60], 8
+mov dword [r12 + 64], 2 ; Depth Texture ID
+mov dword [r12 + 68], 16 ; Z16_UNORM format
+mov dword [r12 + 72], 0
+mov dword [r12 + 76], 0
+
+mov rdi, r13
+mov rsi, 80
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .failed_3d
+
+mov rdi, r12
+mov rsi, 1
+call free_driver_contiguous
+mov rax, 1
+jmp .done
+
+.failed_3d:
+mov rdi, [fb_backing_virt]
+test rdi, rdi
+jz .skip_fb_free
+mov rax, [fb_backing_size]
+add rax, 4095
+shr rax, 12
+mov rsi, rax
+call free_driver_contiguous
+mov qword [fb_backing_virt], 0
+
+.skip_fb_free:
+mov rdi, r12
+mov rsi, 1
+call free_driver_contiguous
+.err_out:
+mov rax, -1
+jmp .done
+
+;; rsi = float color pointer (RGBA)
+.do_clear_screen:
+mov r8d, dword [rsi]
+mov r9d, dword [rsi + 4]
+mov r10d, dword [rsi + 8]
+mov r11d, dword [rsi + 12]
+
+mov rdi, 1
+call alloc_driver_contiguous
+test rax, rax
+jz .err_out
+mov r12, rax
+mov r13, rdx
+
+mov rdi, r12
+mov rcx, 128
+xor eax, eax
+rep stosq
+
+; SUBMIT_3D
+mov dword [r12], 0x0207
+mov dword [r12 + 16], 1
+mov dword [r12 + 24], 52
+
+mov dword [r12 + 32], 0x30005 ; VIRGL_CCMD_SET_FRAMEBUFFER_STATE
+mov dword [r12 + 36], 1 ; Active render targets
+mov dword [r12 + 40], 8 ; Depth Surface Handle
+mov dword [r12 + 44], 7 ; Color Surface Handle
+
+mov dword [r12 + 48], 0x80007 ; VIRGL_CCMD_CLEAR
+mov dword [r12 + 52], 5 ; Flags
+mov [r12 + 56], r8d ; Red
+mov [r12 + 60], r9d ; Green
+mov [r12 + 64], r10d ; Blue
+mov [r12 + 68], r11d ; Alpha
+mov dword [r12 + 72], 0 ; Depth
+mov dword [r12 + 76], 0x3ff00000 ; Depth
+mov dword [r12 + 80], 0 ; Stencil
+
+mov rdi, r13
+mov rsi, 84
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .clear_fail
+
+mov rdi, r12
+mov rcx, 16
+xor eax, eax
+rep stosq
+
+mov dword [r12], 0x0104 ; VIRTIO_GPU_CMD_RESOURCE_FLUSH
+mov dword [r12 + 24], 0
+mov dword [r12 + 28], 0
+mov rax, [screen_width]
+mov dword [r12 + 32], eax
+mov rax, [screen_height]
+mov dword [r12 + 36], eax
+mov dword [r12 + 40], 1 ; Color Buffer Resource ID
+
+mov rdi, r13
+mov rsi, 48
+mov rdx, r13
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+cmp dword [r12 + 256], 0x1100
+jne .clear_fail
+
+mov rdi, r12
+mov rsi, 1
+call free_driver_contiguous
+mov rax, 1
+jmp .done
+
+.clear_fail:
+mov rdi, r12
+mov rsi, 1
+call free_driver_contiguous
 mov rax, -1
 jmp .done
 
@@ -286,8 +617,8 @@ mov al, byte [rbx + 0x14]
 test al, 8
 jz .fail_features
 
-mov word [rbx + 0x16], 0 
-mov ax, word [rbx + 0x18] 
+mov word [rbx + 0x16], 0
+mov ax, word [rbx + 0x18]
 test ax, ax
 jz .fail_queues
 
@@ -333,7 +664,7 @@ mov [rbx + 0x30], rax
 
 mov word [rbx + 0x1C], 1
 
-mov word [rbx + 0x16], 1 
+mov word [rbx + 0x16], 1
 mov ax, word [rbx + 0x18]
 test ax, ax
 jz .fail_queues
@@ -483,6 +814,13 @@ add rdi, 64
 movzx rdi, dword [rdi + 36]
 call serial_print_hex
 
+mov rsi, [test_buf_virt]
+add rsi, 64
+mov eax, dword [rsi + 32]
+mov [screen_width], rax
+mov eax, dword [rsi + 36]
+mov [screen_height], rax
+
 lea rdi, [msg_newline]
 call serial_print
 jmp .test_cleanup
@@ -608,6 +946,78 @@ pop rbx
 pop rbp
 ret
 
+;; rdi = cmd phys
+;; rsi = cmd size
+;; rdx = resp phys
+;; rcx = resp size
+send_virtio_cmd:
+push rbx
+push r12
+push r13
+push r14
+push r15
+mov r12, rdi
+mov r13, rsi
+mov r14, rdx
+mov r15, rcx
+
+mov rsi, [control_avail_virt]
+movzx rcx, word [rsi + 2]
+movzx rax, word [control_queue_size]
+dec rax
+mov r8, rcx
+shl r8, 1
+and r8, rax
+
+mov rsi, [control_desc_virt]
+mov r9, r8
+shl r9, 4
+add rsi, r9
+
+mov [rsi], r12
+mov [rsi + 8], r13d
+mov word [rsi + 12], 1 ; VRING_DESC_F_NEXT
+lea r10, [r8 + 1]
+mov [rsi + 14], r10w
+
+mov [rsi + 16], r14
+mov [rsi + 24], r15d
+mov word [rsi + 28], 2 ; VRING_DESC_F_WRITE
+mov word [rsi + 30], 0
+
+mov rsi, [control_avail_virt]
+mov rdx, rcx
+and rdx, rax
+mov [rsi + 4 + rdx * 2], r8w
+
+inc rcx
+mfence
+mov [rsi + 2], cx
+mfence
+
+; Notify device
+mov rdi, [notify_mapped_addr]
+mov rax, [control_notify_off]
+mov edx, dword [notify_multiplier]
+imul rax, rdx
+add rdi, rax
+mov word [rdi], 0
+
+mov rsi, [control_used_virt]
+.wait_loop:
+mov ax, [rsi + 2]
+cmp ax, cx
+jne .wait_loop
+
+pop r15
+pop r14
+pop r13
+pop r12
+pop rbx
+ret
+
+
+
 
 %include "../../kernel/serial.asm"
 
@@ -665,6 +1075,13 @@ cursor_used_phys dq 0
 cursor_used_virt dq 0
 control_notify_off dq 0
 cursor_notify_off dq 0
+
+screen_width dq 0
+screen_height dq 0
+
+fb_backing_virt dq 0
+fb_backing_phys dq 0
+fb_backing_size dq 0
 
 align 8
 api_table: dq 0

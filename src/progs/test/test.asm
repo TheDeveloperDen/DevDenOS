@@ -46,6 +46,20 @@ xor rdx, rdx
 xor r10, r10
 int 0x81 ; Syscall
 
+mov rax, 6  ; Invoke driver
+mov rdi, [handle]
+mov rsi, 2
+xor rdx, rdx
+xor r10, r10
+int 0x81  ; Syscall
+
+mov rax, 6  ; Invoke driver
+mov rdi, [handle]
+mov rsi, 3
+lea rdx, [clear_color]
+xor r10, r10
+int 0x81  ; Syscall
+
 jmp $
 
 .exit:
@@ -58,6 +72,7 @@ int 0x81
 gpu_name: db "gpu", 0
 handle: dq 1
 
+clear_color: dd 0.0, 1.0, 0.0, 1.0
 
 align 4096
 prog_end:
