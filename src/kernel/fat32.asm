@@ -440,7 +440,15 @@ jz .fail
 mov r12, rax
 mov r13, rdx
 
+movzx ecx, byte [rel spc]
+shl ecx, 9
+dec ecx
+
 mov rdi, r13
+add rdi, rcx
+not rcx
+and rdi, rcx
+
 call kmalloc
 test rax, rax
 jz .fail
