@@ -19,3 +19,5 @@ Windows should dynamically tile around Discord.
 ## Tools
 NASM (Intel Syntax)
 x86-64 QEMU (Base firmware, base CPU settings)
+
+If you are on windows and want symbols in windbg you need MSVC and compile with `./run -win`
