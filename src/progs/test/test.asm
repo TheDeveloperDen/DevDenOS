@@ -60,6 +60,49 @@ lea rdx, [clear_color]
 xor r10, r10
 int 0x81  ; Syscall
 
+mov qword [shader_params + 0], 0
+lea rax, [vs_tgsi]
+mov [shader_params + 8], rax
+mov qword [shader_params + 16], 0
+
+mov rax, 6
+mov rdi, [handle]
+mov rsi, 4
+lea rdx, [shader_params]
+xor r10, r10
+int 0x81
+
+cmp rax, 1
+jne .test_failure
+
+mov rax, [shader_params + 16]
+mov [vs_handle], rax
+mov qword [shader_params + 0], 1
+lea rax, [fs_tgsi]
+mov [shader_params + 8], rax
+mov qword [shader_params + 16], 0
+
+mov rax, 6
+mov rdi, [handle]
+mov rsi, 4
+lea rdx, [shader_params]
+xor r10, r10
+int 0x81
+
+cmp rax, 1
+jne .test_failure
+
+mov rax, [shader_params + 16]
+mov [fs_handle], rax
+jmp .exit_test
+
+.test_failure:
+call serial_init
+lea rdi, [msg_failed]
+call serial_print
+
+.exit_test:
+
 jmp $
 
 .exit:
@@ -73,6 +116,31 @@ gpu_name: db "gpu", 0
 handle: dq 1
 
 clear_color: dd 0.0, 1.0, 0.0, 1.0
+
+align 8
+shader_params:
+dq 0
+dq 0
+dq 0
+vs_handle: dq 0
+fs_handle: dq 0
+
+vs_tgsi:
+db "VERT", 10
+db "DCL IN[0]", 10
+db "DCL OUT[0], POSITION", 10
+db "MOV OUT[0], IN[0]", 10
+db "END", 0
+
+fs_tgsi:
+db "FRAG", 10
+db "DCL OUT[0], COLOR", 10
+db "MOV OUT[0], IMM[0]", 10
+db "END", 0
+
+
+msg_failed: db "Shaders failed", 10, 0
+msg_failed_len equ $ - msg_failed
 
 align 4096
 prog_end:

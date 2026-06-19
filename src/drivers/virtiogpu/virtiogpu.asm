@@ -71,7 +71,123 @@ cmp rdi, 2
 je .do_init_3d
 cmp rdi, 3
 je .do_clear_screen
+cmp rdi, 4
+je .do_create_shader
 
+mov rax, -1
+jmp .done
+
+.do_create_shader:
+mov r14, rsi
+mov rdi, [r14 + 8]
+xor rcx, rcx
+
+.len_loop:
+cmp byte [rdi + rcx], 0
+je .len_done
+inc rcx
+jmp .len_loop
+
+.len_done:
+inc rcx
+mov r15, rcx
+lea rax, [r15 + 3]
+shr rax, 2
+mov rbx, rax
+lea r8, [rbx + 6]
+shl r8, 2
+lea r9, [r8 + 32]
+lea rax, [r9 + 15]
+and rax, ~15
+mov rdx, rax
+add rax, 24
+add rax, 4095
+shr rax, 12
+
+push rbx
+push r15
+push r8
+push r9
+push rdx
+push rax
+mov rdi, rax
+call alloc_driver_contiguous
+
+test rax, rax
+jz .shader_alloc_failed
+
+mov r12, rax
+mov r13, rdx
+pop r10
+push r10
+shl r10, 9
+mov rcx, r10
+mov rdi, r12
+xor rax, rax
+rep stosq
+
+pop r10
+pop rdx
+pop r9
+pop r8
+pop r15
+pop rbx
+
+mov dword [r12], 0x0207
+mov dword [r12 + 16], 1
+mov [r12 + 24], r8d
+mov eax, ebx
+add eax, 5
+shl eax, 16
+or eax, 0x0401
+
+mov [r12 + 32], eax
+mov rax, [next_obj_id]
+mov [r12 + 36], eax
+mov rcx, [r14]
+mov [r12 + 40], ecx
+mov [r12 + 44], r15d
+mov [r12 + 48], ebx
+mov dword [r12 + 52], 0
+mov rdi, r12
+
+add rdi, 56
+mov rsi, [r14 + 8]
+mov rcx, r15
+rep movsb
+push r10
+push rdx
+
+mov rdi, r13
+mov rsi, r9
+add rdx, r13
+mov rcx, 24
+
+call send_virtio_cmd
+pop rdx
+mov rdi, r12
+add rdi, rdx
+cmp dword [rdi], 0x1100
+jne .shader_failed
+mov rax, [next_obj_id]
+
+mov [r14 + 16], rax
+inc qword [next_obj_id]
+pop rsi
+mov rdi, r12
+call free_driver_contiguous
+mov rax, 1
+jmp .done
+
+.shader_failed:
+pop rsi
+mov rdi, r12
+call free_driver_contiguous
+mov rax, -1
+jmp .done
+
+.shader_alloc_failed:
+add rsp, 48
 mov rax, -1
 jmp .done
 
@@ -92,7 +208,7 @@ rep stosq
 mov dword [r12], 0x0200
 mov dword [r12 + 16], 1
 mov dword [r12 + 24], 7
-mov dword [r12 + 32], 0x534f794d ; "DvDn"
+mov dword [r12 + 32], 0x6e447644 ; "DvDn"
 mov dword [r12 + 36], 0x0044332d ; "-3D\0"
 
 mov rdi, r13
@@ -1082,6 +1198,8 @@ screen_height dq 0
 fb_backing_virt dq 0
 fb_backing_phys dq 0
 fb_backing_size dq 0
+
+next_obj_id dq 7
 
 align 8
 api_table: dq 0
