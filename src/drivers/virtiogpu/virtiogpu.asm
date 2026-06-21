@@ -73,7 +73,184 @@ cmp rdi, 3
 je .do_clear_screen
 cmp rdi, 4
 je .do_create_shader
+cmp rdi, 5
+je .do_create_vbo
 
+mov rax, -1
+jmp .done
+
+.do_create_vbo:
+mov r14, rsi
+mov rax, [r14 + 0]
+test rax, rax
+jz .failed
+
+add rax, 4095
+shr rax, 12
+mov r15, rax
+
+mov rdi, r15
+call alloc_driver_contiguous
+test rax, rax
+jz .failed
+
+mov r12, rax
+mov r13, rdx
+
+mov rsi, [r14 + 8]
+test rsi, rsi
+jz .vbo_zero_fill
+
+mov rdi, r12
+mov rcx, [r14 + 0]
+rep movsb
+jmp .vbo_copy_done
+
+.vbo_zero_fill:
+mov rdi, r12
+mov rcx, r15
+shl rcx, 9
+xor eax, eax
+rep stosq
+
+.vbo_copy_done:
+push r14
+push r15
+
+mov rdi, 1
+call alloc_driver_contiguous
+test rax, rax
+jz .alloc_cmd_failed
+
+mov r14, rax
+mov r15, rdx
+
+mov rax, 1
+lock xadd [next_res_id], rax
+mov rbx, rax
+
+mov rdi, r14
+mov rcx, 512
+xor eax, eax
+rep stosq
+
+mov dword [r14 + 0], 0x0204 ; VIRTIO_GPU_CMD_RESOURCE_CREATE_3D
+mov dword [r14 + 24], ebx ; resource id
+mov dword [r14 + 28], 0 ; target (VIRGL_TARGET_BUFFER)
+mov dword [r14 + 32], 0 ; format
+mov dword [r14 + 36], 0x10 ; bind (VIRGL_BIND_VERTEX_BUFFER)
+mov rcx, [rsp + 8]
+mov rax, [rcx + 0]
+mov dword [r14 + 40], eax ; width (bytes)
+mov dword [r14 + 44], 1 ; height
+mov dword [r14 + 48], 1 ; depth
+mov dword [r14 + 52], 1 ; array size
+
+mov rdi, r15
+mov rsi, 72
+mov rdx, r15
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+
+cmp dword [r14 + 256], 0x1100
+jne .failed_after_alloc
+
+mov rdi, r14
+mov rcx, 16
+xor eax, eax
+rep stosq
+
+mov dword [r14 + 0], 0x0106 ; VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING
+mov dword [r14 + 24], ebx ; res id
+mov dword [r14 + 28], 1 ; entries
+mov [r14 + 32], r13 ; VBO physical backing addr
+mov rcx, [rsp + 8]
+mov rax, [rcx + 0]
+mov dword [r14 + 40], eax ; len of entry
+
+mov rdi, r15
+mov rsi, 48
+mov rdx, r15
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+
+cmp dword [r14 + 256], 0x1100
+jne .failed_after_alloc
+
+mov rdi, r14
+mov rcx, 16
+xor eax, eax
+rep stosq
+
+mov dword [r14 + 0], 0x0202 ; VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE
+mov dword [r14 + 16], 1 ; ctx id
+mov dword [r14 + 24], ebx ; res id
+
+mov rdi, r15
+mov rsi, 32
+mov rdx, r15
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+
+cmp dword [r14 + 256], 0x1100
+jne .failed_after_alloc
+
+mov rdi, r14
+mov rcx, 10
+xor eax, eax
+rep stosq
+
+mov dword [r14 + 0], 0x0205 ; VIRTIO_GPU_CMD_TRANSFER_TO_HOST_3D
+mov dword [r14 + 16], 1 ; ctx id
+mov rcx, [rsp + 8]
+mov rax, [rcx + 0]
+mov dword [r14 + 36], eax ; box.width
+mov dword [r14 + 40], 1 ; box.height
+mov dword [r14 + 44], 1 ; box.depth
+mov dword [r14 + 56], ebx ; res id
+
+mov rdi, r15
+mov rsi, 72
+mov rdx, r15
+add rdx, 256
+mov rcx, 24
+call send_virtio_cmd
+
+cmp dword [r14 + 256], 0x1100
+jne .failed_after_alloc
+
+
+
+mov rdi, r14
+mov rsi, 1
+call free_driver_contiguous
+
+pop r15
+pop r14
+
+mov [r14 + 16], rbx
+mov [r14 + 24], r12
+
+mov rax, 1
+jmp .done
+
+.failed_after_alloc:
+mov rdi, r14
+mov rsi, 1
+call free_driver_contiguous
+
+.alloc_cmd_failed:
+pop r15
+pop r14
+
+mov rdi, r12
+mov rsi, r15
+call free_driver_contiguous
+
+.failed:
 mov rax, -1
 jmp .done
 
@@ -1200,6 +1377,7 @@ fb_backing_phys dq 0
 fb_backing_size dq 0
 
 next_obj_id dq 7
+next_res_id dq 3
 
 align 8
 api_table: dq 0

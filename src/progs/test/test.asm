@@ -94,6 +94,24 @@ jne .test_failure
 
 mov rax, [shader_params + 16]
 mov [fs_handle], rax
+
+mov rax, 6
+mov rdi, [handle]
+mov rsi, 5
+lea rdx, [vbo_params]
+xor r10, r10
+int 0x81
+
+cmp rax, 1
+jne .test_failure
+
+lea rdi, [msg_vbo_success]
+call serial_print
+mov rdi, [vbo_handle]
+call serial_print_hex
+mov al, 10
+call serial_putchar
+
 jmp .exit_test
 
 .test_failure:
@@ -141,6 +159,21 @@ db "END", 0
 
 msg_failed: db "Shaders failed", 10, 0
 msg_failed_len equ $ - msg_failed
+
+align 8
+vbo_params:
+dq 48
+dq tri_data
+vbo_handle: dq 0
+vbo_virt: dq 0
+
+align 16
+tri_data:
+dd 0.0, 0.5, 0.0, 1.0
+dd -0.5, -0.5, 0.0, 1.0
+dd 0.5, -0.5, 0.0, 1.0
+
+msg_vbo_success: db "VBO created successfully. Resource ID: ", 0
 
 align 4096
 prog_end:
