@@ -239,7 +239,6 @@ push r8
 cmp dword [rdi], 0x4E445644
 jne .fail2
 
-
 mov r12, rdi
 mov r13, rsi
 
@@ -251,9 +250,32 @@ push rax
 mov cr3, r14
 
 mov r15, [r12 + 0x10]
-mov rbx, [r12 + 0x18]
-add rbx, 4095
-shr rbx, 12
+mov r8, r15
+
+mov ebx, dword [r12 + 0x20]
+add rbx, r12
+movzx rcx, word [r12 + 0x24]
+
+.find_max_vaddr:
+test rcx, rcx
+jz .found_max
+
+mov r9, [rbx + 0x00]
+add r9, [rbx + 0x08]
+cmp r9, r8
+jbe .next_hdr
+mov r8, r9
+
+.next_hdr:
+add rbx, 32
+dec rcx
+jmp .find_max_vaddr
+
+.found_max:
+sub r8, r15
+add r8, 4095
+shr r8, 12
+mov rbx, r8
 
 .map:
 test rbx, rbx
@@ -284,8 +306,17 @@ mov rsi, [rbx + 0x10]
 add rsi, r12
 
 test rcx, rcx
-jz .next_section
+jz .zero_bss
 rep movsb
+
+.zero_bss:
+mov rcx, [rbx + 0x08]
+sub rcx, [rbx + 0x18]
+jle .next_section
+mov rdi, [rbx + 0x00]
+add rdi, [rbx + 0x18]
+xor al, al
+rep stosb
 
 .next_section:
 add rbx, 32
