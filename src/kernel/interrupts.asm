@@ -8,6 +8,43 @@ idtr:
 dw 256 * 16 - 1
 dq idt_table
 
+str_panic_hdr:     db 10, "================ PANIC ================", 10, 0
+str_exc_vector:    db "Exception Vector : 0x", 0
+str_err_code:      db "Error Code       : 0x", 0
+
+str_rip:           db "RIP              : 0x", 0
+str_cs:            db "  CS    : 0x", 0
+str_rsp:           db "RSP              : 0x", 0
+str_ss:            db "  SS    : 0x", 0
+str_rflags:        db "RFLAGS           : 0x", 0
+
+str_rax:           db "RAX              : 0x", 0
+str_rbx:           db "  RBX   : 0x", 0
+str_rcx:           db "RCX              : 0x", 0
+str_rdx:           db "  RDX   : 0x", 0
+str_rsi:           db "RSI              : 0x", 0
+str_rdi:           db "  RDI   : 0x", 0
+str_rbp:           db "RBP              : 0x", 0
+str_r8:            db "  R8    : 0x", 0
+str_r9:            db "R9               : 0x", 0
+str_r10:           db "  R10   : 0x", 0
+str_r11:           db "R11              : 0x", 0
+str_r12:           db "  R12   : 0x", 0
+str_r13:           db "R13              : 0x", 0
+str_r14:           db "  R14   : 0x", 0
+str_r15:           db "R15              : 0x", 0
+
+str_cr0:           db "CR0              : 0x", 0
+str_cr2:           db "  CR2   : 0x", 0
+str_cr3:           db "CR3              : 0x", 0
+str_cr4:           db "  CR4   : 0x", 0
+str_cr8:           db "CR8              : 0x", 0
+
+str_stack_trace:    db "Stack Trace:", 10, 0
+str_trace_entry:   db "  0x", 0
+
+str_newline:       db 10, 0
+
 cursor_x dq 0
 cursor_y dq 0
 
@@ -27,15 +64,22 @@ text_buffer resb 210 * 45
 section .text
 
 
+%macro ISR_NOERR 2
+isr_%1:
+cli
+push qword 0
+push qword %2
+jmp exception_common
+%endmacro
+
 %macro ISR_ERR 2
 isr_%1:
 cli
-mov rdi, 0xb8000
-mov word [rdi], %2
-hlt
-jmp isr_%1
+push qword %2
+jmp exception_common
 %endmacro
 
+%include "kernel/exception.asm"
 
 idt_init:
 push rax
@@ -245,11 +289,11 @@ mov dword [rax + 0x10], 0
 
 ret
 
-ISR_ERR DIV, 0x4f44
-ISR_ERR GPF, 0x4f47
-ISR_ERR PF, 0x4f50
-ISR_ERR DF, 0x4f46
-ISR_ERR UD, 0x4f55
+ISR_NOERR DIV, 0
+ISR_NOERR UD, 6
+ISR_ERR   DF, 8
+ISR_ERR   GPF, 13
+ISR_ERR   PF, 14
 
 isr_255:
 iretq
@@ -331,7 +375,7 @@ call get_thread_by_tid
 test rax, rax
 jz .send_fail
 
-mov rbx, rax 
+mov rbx, rax
 
 mov rdi, rdx
 add rdi, 24
@@ -341,11 +385,11 @@ call kmalloc
 pop rsi
 pop rdx
 
-mov qword [rax], 0 
+mov qword [rax], 0
 mov rcx, [curr_thread]
 mov rcx, [rcx + 80]
-mov [rax + 8], rcx 
-mov [rax + 16], rdx 
+mov [rax + 8], rcx
+mov [rax + 16], rdx
 
 push rax
 lea rdi, [rax + 24]
@@ -354,17 +398,17 @@ rep movsb
 pop rax
 
 cli
-mov rcx, [rbx + 96] 
+mov rcx, [rbx + 96]
 test rcx, rcx
 jnz .append_tail
 
-mov [rbx + 88], rax 
-mov [rbx + 96], rax 
+mov [rbx + 88], rax
+mov [rbx + 96], rax
 jmp .send_done
 
 .append_tail:
-mov [rcx], rax 
-mov [rbx + 96], rax 
+mov [rcx], rax
+mov [rbx + 96], rax
 
 .send_done:
 sti
@@ -405,14 +449,14 @@ push r11
 
 cli
 mov rbx, [curr_thread]
-mov r8, [rbx + 88] 
+mov r8, [rbx + 88]
 test r8, r8
 jz .recv_empty
 
 test rsi, rsi
 jz .recv_size_only
 
-mov r9, [r8 + 16] 
+mov r9, [r8 + 16]
 cmp rdx, r9
 jb .use_max
 mov rdx, r9
@@ -439,7 +483,7 @@ mov rcx, [r8 + 8]
 mov [rdi], rcx
 .skip_tid:
 
-mov rcx, [r8] 
+mov rcx, [r8]
 mov [rbx + 88], rcx
 test rcx, rcx
 jnz .not_empty_tail

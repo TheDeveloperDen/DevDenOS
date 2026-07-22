@@ -61,7 +61,7 @@ fi
 
 gcc -O2 tools/elf2dde.c -o out/elf2dde
 nasm -f elf64 src/progs/api/crt0.asm -o out/crt0.o
-$CC -c -ffreestanding -fno-pie -fno-stack-protector -m64 -I src/progs/api/ src/progs/api/devden.c -o out/devden.o
+$CC -c -g -ffreestanding -fno-pie -fno-stack-protector -m64 -I src/progs/api/ src/progs/api/devden.c -o out/devden.o
 
 # programs
 PROGRAMS=()
@@ -103,7 +103,7 @@ elif [[ -f "$prog_c" ]]; then
 
 echo "Building C program: $prog_name"
 
-$CC -c -ffreestanding -fno-pie -fno-stack-protector -m64 -I src/progs/api/ "$prog_c" -o "out/${prog_name}_c.o"
+$CC -c -g -ffreestanding -fno-pie -fno-stack-protector -m64 -I src/progs/api/ "$prog_c" -o "out/${prog_name}_c.o"
 $LD -T src/progs/api/user.ld out/crt0.o out/devden.o "out/${prog_name}_c.o" -o "out/${prog_name}.elf"
 ./out/elf2dde "out/${prog_name}.elf" "out/${prog_name}.dde"
 

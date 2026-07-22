@@ -5,5 +5,7 @@ int main(int argc, char **argv){
     sys_write(0, "MANUL\n", 6);
   }
 
+  //*(volatile long long*)0 = 5;
+
   return 0;
 }
