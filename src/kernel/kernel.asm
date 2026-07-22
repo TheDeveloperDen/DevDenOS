@@ -10,7 +10,7 @@ section .text
 entry:
 
 mov edi, pml4_table
-mov ecx, (4096 + 4096 + 32768) / 4 
+mov ecx, (4096 + 4096 + 32768) / 4
 xor eax, eax
 rep stosd
 
@@ -199,6 +199,17 @@ call load_kernel_driver
 
 .skip_gpu:
 
+mov rdi, rtl8139_drv
+call fat32_load_file
+test rax, rax
+jz .skip_rtl8139
+
+mov rdi, rax
+mov rsi, rdx
+call load_kernel_driver
+
+.skip_rtl8139:
+
 mov rdi, user_program
 call fat32_load_file
 
@@ -224,6 +235,7 @@ jmp .idle
 user_program: db "den/bin/denshell.dde",0
 disp_cfg: db "den/disp.cfg", 0
 default_gpu: db "den/drivers/bga.dde", 0
+rtl8139_drv: db "den/drivers/rtl8139.dde", 0
 
 invalid_vid: db "invalid video driver", 10, 0
 
@@ -251,7 +263,7 @@ db 10011010b ; access byte
 db 10101111b ; flags
 db 0x00    ; base high
 
-gdt64_data: ; ring 0 DS 
+gdt64_data: ; ring 0 DS
 dw 0xFFFF ; limit low
 dw 0x0000 ; base low
 db 0x00   ; base mid
@@ -311,7 +323,7 @@ dq 0
 gdt64_end:
 
 gdt64_desc:
-dw gdt64_end - gdt64_start - 1 
+dw gdt64_end - gdt64_start - 1
 dd gdt64_start
 
 code64_segment equ gdt64_code - gdt64_start
