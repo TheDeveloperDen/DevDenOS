@@ -16,6 +16,12 @@ though.
 
 Windows should dynamically tile around Discord.
 
+## Build
+`./run --gcc` if using x86_64-elf-gcc
+`./run --clang` if using clang
+`./run --win` to generate symbols when debugging with WinDBG
+
 ## Tools
 NASM (Intel Syntax)
 x86-64 QEMU (Base firmware, base CPU settings)
+x86_64-elf-gcc or clang
