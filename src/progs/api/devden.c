@@ -263,3 +263,35 @@ long sys_recv_msg(uint64_t *sender_tid, void *dest_buf, size_t max_len) {
   );
   return ret;
 }
+
+
+int ReadConIn(void *out_buf) {
+  static long ps2_handle = -1;
+  if (ps2_handle < 0) {
+    ps2_handle = sys_get_driver("ps2");
+    if (ps2_handle < 0) {
+      ps2_handle = sys_load_driver("den/drivers/ps2.dde");
+      if (ps2_handle < 0) return -1;
+    }
+  }
+
+  key_event_t ev;
+  while (1) {
+    long res = sys_driver_invoke(ps2_handle, 4, NULL, &ev);
+    if (res > 0) {
+      if (out_buf) *(key_event_t *)out_buf = ev;
+
+      if (ev.flags & 1) {
+        if (ev.ascii != 0) return (int)(unsigned char)ev.ascii;
+
+        return (int)ev.scancode | 0x100;
+      }
+    }
+    asm volatile (
+      ASM_START
+      "int 0x80\n\t"
+      ASM_END
+      ::: "memory"
+    );
+  }
+}

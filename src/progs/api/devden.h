@@ -1,9 +1,15 @@
 #ifndef DEVDEN_H
 #define DEVDEN_H
 
-
 #include <stddef.h>
 #include <stdint.h>
+
+typedef struct {
+  uint8_t ascii;
+  uint8_t scancode;
+  uint8_t flags;
+  uint8_t modifiers;
+} key_event_t;
 
 void sys_exit(int status);
 long sys_write(int fd, const void *buf, size_t count);
@@ -21,5 +27,7 @@ uint64_t sys_get_tid(void);
 long sys_send_msg(uint64_t target_tid, const void *buf, size_t len);
 long sys_recv_msg(uint64_t *sender_tid, void *dest_buf, size_t max_len);
 
+
+int ReadConIn(void *out_buf);
 
 #endif

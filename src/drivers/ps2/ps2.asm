@@ -95,9 +95,35 @@ cmp rdi, 2
 je .read_mouse_state
 cmp rdi, 3
 je .read_mouse_event
+cmp rdi, 4
+je .read_key_event
 
 mov rax, -1
 ret
+
+.read_key_event:
+mov rax, [event_head]
+cmp rax, [event_tail]
+je .no_key_event
+
+lea rbx, [key_event_ring]
+shl rax, 2
+add rbx, rax
+
+mov eax, [rbx]
+mov [rdx], eax
+
+mov rax, [event_head]
+inc rax
+and rax, 255
+mov [event_head], rax
+mov rax, 1
+ret
+
+.no_key_event:
+xor rax, rax
+ret
+
 
 .read_key:
 mov rax, [buf_head]
@@ -376,87 +402,227 @@ push rax
 push rbx
 push rcx
 push rdx
+push r10
+push r11
 
 in al, 0x60
 
+cmp al, 0xE0
+je .set_e0
 
-cmp al, 0xAA
-je .lshift_up
+mov bl, al
+and bl, 0x7F
+mov cl, al
+shr cl, 7
 
-cmp al, 0xB6
-je .rshift_up
+cmp byte [e0_flag], 0
+jne .handle_e0
 
-test al, 0x80
-jnz .done
+cmp bl, 0x2A
+je .lshift
+cmp bl, 0x36
+je .rshift
+cmp bl, 0x3A
+je .caps
+cmp bl, 0x1D
+je .lctrl
+cmp bl, 0x38
+je .lalt
 
-cmp al, 0x2A
-je .lshift_down
-cmp al, 0x36
-je .rshift_down
-cmp al, 0x3A
-je .caps_down
+jmp .process_char
 
-movzx rcx, al
+.lshift:
+test cl, cl
+jnz .lshift_up
+or byte [shift_state], 1
+jmp .process_char
+.lshift_up:
+and byte [shift_state], 0xFE
+jmp .process_char
+
+.rshift:
+test cl, cl
+jnz .rshift_up
+or byte [shift_state], 2
+jmp .process_char
+.rshift_up:
+and byte [shift_state], 0xFD
+jmp .process_char
+
+.caps:
+test cl, cl
+jnz .process_char
+xor byte [caps_state], 1
+jmp .process_char
+
+.lctrl:
+test cl, cl
+jnz .lctrl_up
+or byte [ctrl_state], 1
+jmp .process_char
+.lctrl_up:
+and byte [ctrl_state], 0xFE
+jmp .process_char
+
+.lalt:
+test cl, cl
+jnz .lalt_up
+or byte [alt_state], 1
+jmp .process_char
+.lalt_up:
+and byte [alt_state], 0xFE
+jmp .process_char
+
+.handle_e0:
+cmp bl, 0x1D
+je .rctrl
+cmp bl, 0x38
+je .ralt
+jmp .process_char
+
+.rctrl:
+test cl, cl
+jnz .rctrl_up
+or byte [ctrl_state], 2
+jmp .process_char
+.rctrl_up:
+and byte [ctrl_state], 0xFD
+jmp .process_char
+
+.ralt:
+test cl, cl
+jnz .ralt_up
+or byte [alt_state], 2
+jmp .process_char
+.ralt_up:
+and byte [alt_state], 0xFD
+jmp .process_char
+
+.set_e0:
+mov byte [e0_flag], 1
+jmp .done
+
+.process_char:
+cmp byte [e0_flag], 0
+jz .map_normal
+
+cmp bl, 0x1C
+je .e0_enter
+cmp bl, 0x35
+je .e0_slash
+mov ch, 0
+jmp .no_ascii
+
+.e0_enter:
+mov ch, 10
+jmp .check_ascii
+
+.e0_slash:
+mov ch, '/'
+jmp .check_ascii
+
+.map_normal:
+movzx r10, bl
 cmp byte [shift_state], 0
 je .use_normal
-lea rbx,[scancode_map_shift]
+lea rbx, [scancode_map_shift]
 jmp .map_selected
 
 .use_normal:
 lea rbx, [scancode_map]
 
 .map_selected:
-mov al, [rbx + rcx]
+mov ch, 0
+cmp r10, 128
+jae .no_ascii
+mov al, [rbx + r10]
+mov ch, al
+
 cmp byte [caps_state], 0
-je .check_valid
+je .check_ascii
 
-mov ah, al
-or ah, 0x20
-cmp ah, 'a'
-jl .check_valid
-cmp ah, 'z'
-jg .check_valid
-xor al, 0x20
+mov dl, ch
+or dl, 0x20
+cmp dl, 'a'
+jl .check_ascii
+cmp dl, 'z'
+jg .check_ascii
+xor ch, 0x20
 
-.check_valid:
-test al, al
+.check_ascii:
+
+.no_ascii:
+mov dl, cl
+xor dl, 1
+cmp byte [e0_flag], 0
+je .no_e0_flag
+or dl, 2
+.no_e0_flag:
+
+mov dh, 0
+cmp byte [shift_state], 0
+je .m_shift_done
+or dh, 1
+.m_shift_done:
+cmp byte [caps_state], 0
+je .m_caps_done
+or dh, 2
+.m_caps_done:
+cmp byte [ctrl_state], 0
+je .m_ctrl_done
+or dh, 4
+.m_ctrl_done:
+cmp byte [alt_state], 0
+je .m_alt_done
+or dh, 8
+.m_alt_done:
+
+movzx eax, dh
+shl eax, 8
+mov al, dl
+shl eax, 8
+mov al, bl
+shl eax, 8
+mov al, ch
+
+mov rbx, [event_tail]
+mov r11, rbx
+inc r11
+and r11, 255
+cmp r11, [event_head]
+je .skip_event_push
+
+lea r10, [key_event_ring]
+shl rbx, 2
+mov [r10 + rbx], eax
+mov [event_tail], r11
+
+.skip_event_push:
+mov byte [e0_flag], 0
+
+test cl, cl
+jnz .done
+
+test ch, ch
 jz .done
 
 mov rbx, [buf_tail]
-mov rcx, rbx
-inc rcx
-and rcx, 255
-cmp rcx, [buf_head]
+mov r11, rbx
+inc r11
+and r11, 255
+cmp r11, [buf_head]
 je .done
 
-lea rdx, [key_buf]
-mov [rdx + rbx], al
-mov [buf_tail], rcx
-
-jmp .done
-
-.lshift_down:
-or byte[shift_state], 1
-jmp .done
-.rshift_down:
-or byte [shift_state], 2
-jmp .done
-.lshift_up:
-and byte [shift_state], 0xFE
-jmp .done
-.rshift_up:
-and byte [shift_state], 0xFD
-jmp .done
-.caps_down:
-xor byte [caps_state], 1
+lea r10, [key_buf]
+mov [r10 + rbx], al
+mov [buf_tail], r11
 
 .done:
-;mov al, 0x20
-;out 0x20, al
-
 mov rax, 0xFFFF8000FEE00000
 mov dword [rax + 0xB0], 0
 
+pop r11
+pop r10
 pop rdx
 pop rcx
 pop rbx
@@ -470,8 +636,17 @@ buf_tail dq 0
 key_buf times 256 db 0
 shift_state db 0
 caps_state db 0
+ctrl_state db 0
+alt_state db 0
+e0_flag db 0
+
+event_head dq 0
+event_tail dq 0
+align 4
+key_event_ring times 1024 db 0
 
 mouse_cycle db 0
+
 mouse_packet db 0, 0, 0
 mouse_x dd 840
 mouse_y dd 360
