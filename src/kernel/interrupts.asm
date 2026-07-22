@@ -96,13 +96,63 @@ mov rdi, 0
 mov rsi, 0x8E
 call idt_set_entry
 
+lea rax, [isr_DB]
+mov rdi, 1
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_NMI]
+mov rdi, 2
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_BP]
+mov rdi, 3
+mov rsi, 0xEE
+call idt_set_entry
+
+lea rax, [isr_OF]
+mov rdi, 4
+mov rsi, 0xEE
+call idt_set_entry
+
+lea rax, [isr_BR]
+mov rdi, 5
+mov rsi, 0x8E
+call idt_set_entry
+
 lea rax, [isr_UD]
 mov rdi, 6
 mov rsi, 0x8E
 call idt_set_entry
 
+lea rax, [isr_NM]
+mov rdi, 7
+mov rsi, 0x8E
+call idt_set_entry
+
 lea rax, [isr_DF]
 mov rdi, 8
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_CSO]
+mov rdi, 9
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_TS]
+mov rdi, 10
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_NP]
+mov rdi, 11
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_SS]
+mov rdi, 12
 mov rsi, 0x8E
 call idt_set_entry
 
@@ -113,6 +163,91 @@ call idt_set_entry
 
 lea rax, [isr_PF]
 mov rdi, 14
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES15]
+mov rdi, 15
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_MF]
+mov rdi, 16
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_AC]
+mov rdi, 17
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_MC]
+mov rdi, 18
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_XM]
+mov rdi, 19
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_VE]
+mov rdi, 20
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_CP]
+mov rdi, 21
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES22]
+mov rdi, 22
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES23]
+mov rdi, 23
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES24]
+mov rdi, 24
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES25]
+mov rdi, 25
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES26]
+mov rdi, 26
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES27]
+mov rdi, 27
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_HV]
+mov rdi, 28
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_VC]
+mov rdi, 29
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_SX]
+mov rdi, 30
+mov rsi, 0x8E
+call idt_set_entry
+
+lea rax, [isr_RES31]
+mov rdi, 31
 mov rsi, 0x8E
 call idt_set_entry
 
@@ -290,10 +425,37 @@ mov dword [rax + 0x10], 0
 ret
 
 ISR_NOERR DIV, 0
+ISR_NOERR DB, 1
+ISR_NOERR NMI, 2
+ISR_NOERR BP, 3
+ISR_NOERR OF, 4
+ISR_NOERR BR, 5
 ISR_NOERR UD, 6
-ISR_ERR   DF, 8
-ISR_ERR   GPF, 13
-ISR_ERR   PF, 14
+ISR_NOERR NM, 7
+ISR_ERR DF, 8
+ISR_NOERR CSO, 9
+ISR_ERR TS, 10
+ISR_ERR NP, 11
+ISR_ERR SS, 12
+ISR_ERR GPF, 13
+ISR_ERR PF, 14
+ISR_NOERR RES15, 15
+ISR_NOERR MF, 16
+ISR_ERR AC, 17
+ISR_NOERR MC, 18
+ISR_NOERR XM, 19
+ISR_NOERR VE, 20
+ISR_ERR CP, 21
+ISR_NOERR RES22, 22
+ISR_NOERR RES23, 23
+ISR_NOERR RES24, 24
+ISR_NOERR RES25, 25
+ISR_NOERR RES26, 26
+ISR_NOERR RES27, 27
+ISR_NOERR HV, 28
+ISR_ERR VC, 29
+ISR_ERR SX, 30
+ISR_NOERR RES31, 31
 
 isr_255:
 iretq
