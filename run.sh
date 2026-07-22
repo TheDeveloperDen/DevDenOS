@@ -2,11 +2,33 @@ set -e
 mkdir -p out
 
 WIN_BUILD=0
+USE_CLANG=0
+
 for arg in "$@"; do
 if [[ "$arg" == "-win" ]]; then
 WIN_BUILD=1
+elif [[ "$arg" == "--clang" ]]; then
+USE_CLANG=1
+elif [[ "$arg" == "--gcc" ]]; then
+USE_CLANG=0
 fi
 done
+
+if [[ $USE_CLANG -eq 1 ]]; then
+echo "Using Clang toolchain"
+CC="clang --target=x86_64-unknown-elf -masm=intel -Wa,--noexecstack"
+if command -v x86_64-elf-ld >/dev/null 2>&1; then
+LD="x86_64-elf-ld -z noexecstack"
+elif command -v ld.lld >/dev/null 2>&1; then
+LD="ld.lld -m elf_x86_64 -z noexecstack"
+else
+LD="ld -m elf_x86_64 -z noexecstack"
+fi
+else
+echo "Using GCC toolchain"
+CC="x86_64-elf-gcc -Wa,--noexecstack"
+LD="x86_64-elf-ld -z noexecstack"
+fi
 
 > src/kernel/globals.asm
 
@@ -37,13 +59,24 @@ MSYS2_ARG_CONV_EXCL="*" "$MSVC_LINK" /subsystem:native /entry:entry /base:0xF000
 objcopy -O binary out/KERNEL.EXE out/KERNEL.BIN
 fi
 
+gcc -O2 tools/elf2dde.c -o out/elf2dde
+nasm -f elf64 src/progs/api/crt0.asm -o out/crt0.o
+$CC -c -ffreestanding -fno-pie -fno-stack-protector -m64 -I src/progs/api/ src/progs/api/devden.c -o out/devden.o
+
 # programs
 PROGRAMS=()
 for prog_dir in src/progs/*/; do
 if [[ -d "$prog_dir" ]]; then
 
 prog_name=$(basename "$prog_dir")
+
+if [[ "$prog_name" == "api" ]]; then
+continue
+fi
+
 prog_asm="${prog_dir}${prog_name}.asm"
+prog_c="${prog_dir}${prog_name}.c"
+
 if [[ -f "$prog_asm" ]]; then
 
 echo "Building program: $prog_name"
@@ -66,9 +99,20 @@ fi
 
 PROGRAMS+=("$prog_name")
 
+elif [[ -f "$prog_c" ]]; then
+
+echo "Building C program: $prog_name"
+
+$CC -c -ffreestanding -fno-pie -fno-stack-protector -m64 -I src/progs/api/ "$prog_c" -o "out/${prog_name}_c.o"
+$LD -T src/progs/api/user.ld out/crt0.o out/devden.o "out/${prog_name}_c.o" -o "out/${prog_name}.elf"
+./out/elf2dde "out/${prog_name}.elf" "out/${prog_name}.dde"
+
+PROGRAMS+=("$prog_name")
+
 fi
 fi
 done
+
 
 # drivers
 DRIVERS=()
