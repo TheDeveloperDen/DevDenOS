@@ -221,7 +221,7 @@ mcopy -i out/devdenOS.img disp.cfg ::/den/disp.cfg
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 count=3 conv=notrunc
 dd if=out/bootloader.bin of=out/devdenOS.img bs=1 skip=93 seek=93 count=417 conv=notrunc
 
-dd if=out/2ndStage.bin of=out/devdenOS.img bs=512 seek=1 conv=notrunc
+dd if=out/2ndStage.bin of=out/devdenOS.img bs=512 seek=2 conv=notrunc
 
 
 qemu-system-x86_64 -m 2.5G -drive format=raw,file=out/devdenOS.img -display gtk -accel kvm -cpu host -serial stdio

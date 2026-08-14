@@ -16,7 +16,7 @@ mov sp, 0x7c00
 mov ah, 0x02
 mov al, 32
 mov ch, 0
-mov cl, 2
+mov cl, 3
 mov dh, 0
 mov dl, 0x80
 mov bx, 0x7e00
