@@ -226,6 +226,10 @@ ret
 
 ;; rdi = buffer
 ;; rsi = size
+;; rdx = argc
+;; rcx = args buffer
+;; r8  = args length
+;; r9  = name pointer
 load_userspace_process:
 push rbx
 push r12
@@ -241,6 +245,34 @@ jne .fail2
 
 mov r12, rdi
 mov r13, rsi
+
+xor rbx, rbx
+test r9, r9
+jz .no_name
+
+mov rsi, r9
+xor rcx, rcx
+.name_len:
+cmp byte [rsi + rcx], 0
+je .name_len_done
+inc rcx
+jmp .name_len
+
+.name_len_done:
+inc rcx
+push rcx
+push r9
+mov rdi, rcx
+call kmalloc
+pop rsi
+pop rcx
+mov rbx, rax
+
+mov rdi, rbx
+rep movsb
+
+.no_name:
+push rbx
 
 call create_address_space
 mov r14, rax
@@ -340,9 +372,9 @@ dec rbx
 jnz .map_stack
 
 mov r15, 0x7FFFF0100000
-mov r8, [rsp + 8]
-mov rcx, [rsp + 16]
-mov rdx, [rsp + 24]
+mov r8, [rsp + 16]
+mov rcx, [rsp + 24]
+mov rdx, [rsp + 32]
 
 test rdx, rdx
 jle .skip_args
@@ -394,6 +426,8 @@ and r15, ~15
 pop rax
 mov cr3, rax
 
+pop rbx
+
 add rsp, 24
 
 mov rdi,[r12 + 0x08]
@@ -402,7 +436,9 @@ mov rdx, r14
 mov rcx, r14
 mov r8, [r12 + 0x18]
 mov r9, [r12 + 0x10]
+push rbx
 call create_user_thread
+add rsp, 8
 
 mov rdi, r12
 call kfree

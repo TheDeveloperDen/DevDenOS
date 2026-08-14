@@ -264,6 +264,22 @@ long sys_recv_msg(uint64_t *sender_tid, void *dest_buf, size_t max_len) {
   return ret;
 }
 
+long sys_get_tid_by_name(const char *name) {
+  long ret;
+  asm volatile(
+    ASM_START
+    "mov rax, 16\n\t"
+    "mov rdi, %q1\n\t"
+    "int 0x81\n\t"
+    "mov %q0, rax"
+    ASM_END
+    : "=r" (ret)
+    : "r" (name)
+    : "rax", "rdi"
+  );
+  return ret;
+}
+
 
 int ReadConIn(void *out_buf) {
   static long ps2_handle = -1;

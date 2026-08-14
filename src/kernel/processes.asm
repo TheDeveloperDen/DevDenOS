@@ -19,6 +19,7 @@ next_tid dq 2
 ;; 80 : thread id
 ;; 88 : msg queue head
 ;; 96 : msg queue tail
+;; 104 : name ptr
 
 section .text
 
@@ -42,6 +43,7 @@ mov [rax + 48], rcx
 mov qword [rax + 80], 1
 mov qword [rax + 88], 0
 mov qword [rax + 96], 0
+mov qword [rax + 104], 0
 
 popfq
 ret
@@ -104,6 +106,7 @@ mov [rax + 80], rcx
 inc qword [next_tid]
 mov qword [rax + 88], 0
 mov qword [rax + 96], 0
+mov qword [rax + 104], 0
 
 mov rcx, [curr_thread]
 mov rdx, [rcx + 8]
@@ -319,8 +322,14 @@ push rcx
 push rax
 
 mov rdi, [rax + 32]
-
 call kfree
+
+mov rdi, [rsp]
+mov rdi, [rdi + 104]
+test rdi, rdi
+jz .skip_free_name
+call kfree
+.skip_free_name:
 
 pop rdi
 call kfree
@@ -448,6 +457,8 @@ mov [rax + 80], r8
 inc qword [next_tid]
 mov qword [rax + 88], 0
 mov qword [rax + 96], 0
+mov r8, [rsp + 72]
+mov [rax + 104], r8
 
 add rsp, 16
 

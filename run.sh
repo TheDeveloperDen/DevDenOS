@@ -224,4 +224,4 @@ dd if=out/bootloader.bin of=out/devdenOS.img bs=1 skip=93 seek=93 count=417 conv
 dd if=out/2ndStage.bin of=out/devdenOS.img bs=512 seek=1 conv=notrunc
 
 
-qemu-system-x86_64 -m 2.5G -drive format=raw,file=out/devdenOS.img -d int,cpu_reset -no-reboot -D qemu_crash.log
+qemu-system-x86_64 -m 2.5G -drive format=raw,file=out/devdenOS.img -display gtk -accel kvm -cpu host -serial stdio

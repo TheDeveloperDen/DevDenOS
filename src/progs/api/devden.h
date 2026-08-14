@@ -26,6 +26,7 @@ void sys_get_cursor(uint64_t *x, uint64_t *y);
 uint64_t sys_get_tid(void);
 long sys_send_msg(uint64_t target_tid, const void *buf, size_t len);
 long sys_recv_msg(uint64_t *sender_tid, void *dest_buf, size_t max_len);
+long sys_get_tid_by_name(const char *name);
 
 
 int ReadConIn(void *out_buf);

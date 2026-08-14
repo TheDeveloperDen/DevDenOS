@@ -507,6 +507,8 @@ cmp rax, 14
 je .sys_send_msg
 cmp rax, 15
 je .sys_recv_msg
+cmp rax, 16
+je .sys_get_tid_by_name
 
 cmp rax, 12
 je .sys_get_cursor
@@ -516,6 +518,112 @@ iretq
 .sys_get_tid:
 mov rax, [curr_thread]
 mov rax, [rax + 80]
+iretq
+
+;; rax = 16
+;; rdi = target process name
+.sys_get_tid_by_name:
+push rbx
+push rcx
+push rdx
+push rsi
+push rdi
+push r8
+push r9
+push r10
+push r11
+
+test rdi, rdi
+jz .get_tid_name_fail
+
+mov rbx, [curr_thread]
+test rbx, rbx
+jz .get_tid_name_fail
+
+mov r8, rbx
+
+.get_tid_name_loop:
+cmp qword [rbx + 40], 1
+jne .get_tid_name_next
+
+mov rsi, [rbx + 104]
+test rsi, rsi
+jz .get_tid_name_next
+
+mov rdx, [rsp + 32]
+mov rdx, [rsp + 32]
+push rsi
+
+.get_tid_strcmp:
+mov al, [rdx]
+mov cl, [rsi]
+cmp al, cl
+jne .try_basename
+test al, al
+jz .get_tid_match_found
+inc rdx
+inc rsi
+jmp .get_tid_strcmp
+
+.try_basename:
+pop rsi
+push rsi
+
+mov rcx, rsi
+
+.find_slash_loop:
+mov al, [rcx]
+test al, al
+jz .found_slash_end
+cmp al, '/'
+jne .no_slash_match
+lea rsi, [rcx + 1]
+.no_slash_match:
+inc rcx
+jmp .find_slash_loop
+
+.found_slash_end:
+mov rdx, [rsp + 40]
+.get_tid_base_strcmp:
+mov al, [rdx]
+mov cl, [rsi]
+cmp al, cl
+jne .no_match
+test al, al
+jz .get_tid_match_found
+inc rdx
+inc rsi
+jmp .get_tid_base_strcmp
+
+.get_tid_match_found:
+pop rsi
+jmp .get_tid_name_found
+
+.no_match:
+pop rsi
+
+.get_tid_name_next:
+mov rbx, [rbx + 8]
+cmp rbx, r8
+jne .get_tid_name_loop
+
+.get_tid_name_fail:
+mov rax, -1
+jmp .get_tid_name_exit
+
+.get_tid_name_found:
+mov rax, [rbx + 80]
+
+.get_tid_name_exit:
+pop r11
+pop r10
+pop r9
+pop r8
+pop rdi
+pop rsi
+pop rdx
+pop rcx
+pop rbx
 iretq
 
 ;; rax = 14
@@ -830,6 +938,7 @@ mov rsi, rdx
 mov rdx, r12
 mov rcx, r15
 mov r8, r14
+mov r9, [rsp + 64]
 call load_userspace_process
 
 test r12, r12

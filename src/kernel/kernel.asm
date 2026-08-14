@@ -220,6 +220,8 @@ mov rdi, rax
 mov rsi, rdx
 xor rdx, rdx
 xor rcx, rcx
+xor r8, r8
+mov r9, user_program
 call load_userspace_process
 
 .fail:
